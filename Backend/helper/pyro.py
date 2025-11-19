@@ -125,11 +125,11 @@ async def restart_notification():
             
             try:
                 repo = Telegram.UPSTREAM_REPO.split('/')
-                UPSTREAM_REPO = f"https://github.com/{repo[-2]}/{repo[-1]}"
+                UPSTREAM_REPO = f"https://github.com/weebzone/Telegram-Stremio"
                 await StreamBot.edit_message_text(
                     chat_id=chat_id,
                     message_id=msg_id,
-                    text=f"... ♻️ Restart Successfully...! \n\nDate: {now.strftime('%d/%m/%y')}\nTime: {now.strftime('%I:%M:%S %p')}\nTimeZone: {timezone.zone}\n\nRepo: {UPSTREAM_REPO}\nBranch: {Telegram.UPSTREAM_BRANCH}\nVersion: {__version__}",
+                    text=f"... ♻️ Başarıyla Yeniden Başlatıldı \n\nTarih: {now.strftime('%d/%m/%y')}\nSaat: {now.strftime('%I:%M:%S %p')}\nZaman Dilimi: {timezone.zone}\n\nDepo: {UPSTREAM_REPO}\nDal: {Telegram.UPSTREAM_BRANCH}\nVersiyon: {__version__}",
                     parse_mode=enums.ParseMode.HTML
                 )
             except Exception as e:
@@ -143,11 +143,11 @@ async def restart_notification():
 
 # Bot commands
 commands = [
-    BotCommand("start", "🚀 Start the bot"),
-    BotCommand("set", "🎬 Manually add IMDb metadata"),
-    BotCommand("fixmetadata", "⚙️ Fix empty fields of Metadata"),
-    BotCommand("log", "📄 Send the log file"),
-    BotCommand("restart", "♻️ Restart the bot"),
+    BotCommand("start", "🚀 Botu başlat"),
+    BotCommand("set", "🎬 IMDb meta verilerini elle ekleyin"),
+    BotCommand("fixmetadata", "⚙️ Meta Veri'nin boş alanlarını düzeltin"),
+    BotCommand("log", "📄 Günlük dosyasını gönder"),
+    BotCommand("restart", "♻️ Botu yeniden başlat"),
 ]
 
 
