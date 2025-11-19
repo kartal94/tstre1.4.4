@@ -10,9 +10,9 @@ async def send_start_message(client: Client, message: Message):
         addon_url = f"{base_url}/stremio/manifest.json"
 
         await message.reply_text(
-            '<b>Welcome to the main Telegram Stremio bot!</b>\n\n'
-            'To install the Stremio addon, copy the URL below and add it in the Stremio addons:\n\n'
-            f'<b>Your Addon URL:</b>\n<code>{addon_url}</code>',
+            '<b>Telegram stremio botuna hoş geldin.</b>\n\n'
+            'Stremio eklentisini yüklemek için aşağıdaki URL'yi kopyalayın ve Stremio eklentilerine ekleyin:\n\n'
+            f'<b>Eklenti adresin:</b>\n<code>{addon_url}</code>',
             quote=True,
             parse_mode=enums.ParseMode.HTML
         )
