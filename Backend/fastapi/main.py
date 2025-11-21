@@ -45,27 +45,27 @@ app.include_router(stream_router)
 app.include_router(stremio_router)
 
 # --- Public Routes (No Authentication Required) ---
-@app.get("/login", response_class=HTMLResponse)
+@app.get("/deneme/login", response_class=HTMLResponse)
 async def login_get(request: Request):
     return await login_page(request)
 
-@app.post("/login", response_class=HTMLResponse)
+@app.post("/deneme/login", response_class=HTMLResponse)
 async def login_post_route(request: Request, username: str = Form(...), password: str = Form(...)):
     return await login_post(request, username, password)
 
-@app.get("/logout")
+@app.get("/deneme/logout")
 async def logout_route(request: Request):
     return await logout(request)
 
-@app.post("/set-theme")
+@app.post("/deneme/set-theme")
 async def set_theme_route(request: Request, theme: str = Form(...)):
     return await set_theme(request, theme)
 
-@app.get("/status", response_class=HTMLResponse)
+@app.get("/deneme/status", response_class=HTMLResponse)
 async def public_status(request: Request):
     return await public_status_page(request)
 
-@app.get("/stremio", response_class=HTMLResponse)
+@app.get("/deneme/stremio", response_class=HTMLResponse)
 async def stremio_guide(request: Request):
     return await stremio_guide_page(request)
 
