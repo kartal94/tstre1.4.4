@@ -22,7 +22,7 @@ app = FastAPI(
     title="Telegram Stremio Media Server",
     description="A powerful, self-hosted Telegram Stremio Media Server built with FastAPI, MongoDB, and PyroFork seamlessly integrated with Stremio for automated media streaming and discovery.",
     version=__version__,
-    root_path="/deneme"
+    root_path="/deneme"  # root path güncel
 )
 
 # --- Middleware Setup ---
@@ -45,17 +45,22 @@ app.include_router(stream_router)
 app.include_router(stremio_router)
 
 # --- Public Routes (No Authentication Required) ---
-@app.get("/deneme/login", response_class=HTMLResponse)
+@app.get("/login", response_class=HTMLResponse)
 async def login_get(request: Request):
     return await login_page(request)
 
-@app.post("/deneme/login", response_class=HTMLResponse)
+@app.post("/login", response_class=HTMLResponse)
 async def login_post_route(request: Request, username: str = Form(...), password: str = Form(...)):
-    return await login_post(request, username, password)
+    # login işlemi
+    await login_post(request, username, password)
+    root = request.scope.get("root_path", "")
+    return RedirectResponse(url=f"{root}/", status_code=302)  # root_path dahil edildi
 
 @app.get("/logout")
 async def logout_route(request: Request):
-    return await logout(request)
+    await logout(request)
+    root = request.scope.get("root_path", "")
+    return RedirectResponse(url=f"{root}/login", status_code=302)
 
 @app.post("/set-theme")
 async def set_theme_route(request: Request, theme: str = Form(...)):
@@ -82,6 +87,7 @@ async def media_management(request: Request, media_type: str = "movie", _: bool 
 async def edit_media(request: Request, tmdb_id: int, db_index: int, media_type: str, _: bool = Depends(require_auth)):
     return await edit_media_page(request, tmdb_id, db_index, media_type, _)
 
+# --- API Routes ---
 @app.get("/api/media/list")
 async def list_media(
     media_type: str = Query("movie", regex="^(movie|tv)$"), 
@@ -132,7 +138,8 @@ async def get_workloads(_: bool = Depends(require_auth)):
     except Exception as e:
         return {"loads": {}}
 
-
+# --- Exception Handlers ---
 @app.exception_handler(401)
 async def auth_exception_handler(request: Request, exc):
-    return RedirectResponse(url="/login", status_code=302)
+    root = request.scope.get("root_path", "")
+    return RedirectResponse(url=f"{root}/login", status_code=302)
