@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 
-{% block title %}Stremio Setup Guide - Telegram Stremio{% endblock %}
+{% block title %}Stremio Kurulum Kılavuzu{% endblock %}
 
 {% block content %}
 <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <!-- Header -->
     <div class="mb-8 text-center">
-        <h1 class="text-3xl font-bold">Stremio Addon Setup</h1>
-        <p class="theme-text-secondary mt-2">Install the Telegram Stremio addon to access your media through Stremio</p>
+        <h1 class="text-3xl font-bold">Stremio Eklenti Kurulumu</h1>
+        <p class="theme-text-secondary mt-2">Stremio aracılığıyla medyanıza erişmek için Telegram Stremio eklentisini yükleyin</p>
     </div>
     
     <!-- Installation Steps -->
@@ -18,12 +18,12 @@
                     <span class="text-white font-semibold">1</span>
                 </div>
                 <div>
-                    <h3 class="text-lg font-semibold mb-2">Copy the Addon URL</h3>
-                    <p class="theme-text-secondary mb-4">Copy the manifest URL below to your clipboard</p>
+                    <h3 class="text-lg font-semibold mb-2">Eklenti URL'sini kopyalayın</h3>
+                    <p class="theme-text-secondary mb-4">Aşağıdaki manifesto URL'sini panonuza kopyalayın</p>
                     <div class="bg-gray-100 p-4 rounded-md font-mono text-sm break-all">
                         <span id="addon-url">{{ request.base_url }}stremio/manifest.json</span>
                         <button onclick="copyToClipboard('addon-url')" 
-                                class="ml-2 text-primary hover:underline">Copy</button>
+                                class="ml-2 text-primary hover:underline">Kopyala</button>
                     </div>
                 </div>
             </div>
@@ -35,8 +35,8 @@
                     <span class="text-white font-semibold">2</span>
                 </div>
                 <div>
-                    <h3 class="text-lg font-semibold mb-2">Open Stremio</h3>
-                    <p class="theme-text-secondary">Launch the Stremio application on your device</p>
+                    <h3 class="text-lg font-semibold mb-2">Stremio'yu aç</h3>
+                    <p class="theme-text-secondary">Cihazınızda Stremio uygulamasını başlatın</p>
                 </div>
             </div>
         </div>
@@ -47,8 +47,8 @@
                     <span class="text-white font-semibold">3</span>
                 </div>
                 <div>
-                    <h3 class="text-lg font-semibold mb-2">Navigate to Addons</h3>
-                    <p class="theme-text-secondary">Go to the "Addons" section in Stremio's main menu</p>
+                    <h3 class="text-lg font-semibold mb-2">Eklentilere gidin</h3>
+                    <p class="theme-text-secondary">Stremio'nun ana menüsündeki "Eklentiler" bölümüne gidin</p>
                 </div>
             </div>
         </div>
@@ -59,10 +59,10 @@
                     <span class="text-white font-semibold">4</span>
                 </div>
                 <div>
-                    <h3 class="text-lg font-semibold mb-2">Install the Addon</h3>
-                    <p class="theme-text-secondary mb-4">Paste the URL in the "Add Addon" field and click install</p>
+                    <h3 class="text-lg font-semibold mb-2">Eklentiyi yükleyin</h3>
+                    <p class="theme-text-secondary mb-4">"Eklenti Ekle" alanına URL'yi yapıştırın ve yükle'ye tıklayın</p>
                     <div class="bg-blue-50 border border-blue-200 text-blue-700 p-4 rounded-md">
-                        <strong>Tip:</strong> Make sure your device can access this server's IP address on the network
+                        <strong>Uyarı:</strong> Cihazınızın ağdaki bu sunucunun IP adresine erişebildiğinden emin olun
                     </div>
                 </div>
             </div>
@@ -71,19 +71,19 @@
     
     <!-- Additional Information -->
     <div class="theme-card p-6 rounded-lg shadow mt-8">
-        <h2 class="text-xl font-semibold mb-4">Additional Information</h2>
+        <h2 class="text-xl font-semibold mb-4">Ek Bilgiler</h2>
         <div class="space-y-4">
             <div>
-                <h4 class="font-medium">Network Requirements</h4>
-                <p class="theme-text-secondary text-sm">Both Stremio and this server must be on the same network or the server must be accessible via internet</p>
+                <h4 class="font-medium">Ağ Gereksinimleri</h4>
+                <p class="theme-text-secondary text-sm">Hem Stremio hem de bu sunucu aynı ağda olmalı veya sunucuya internet üzerinden erişilebilmelidir</p>
             </div>
             <div>
-                <h4 class="font-medium">Supported Content</h4>
-                <p class="theme-text-secondary text-sm">The addon provides access to movies and TV shows in your media collection</p>
+                <h4 class="font-medium">Desteklenen İçerik</h4>
+                <p class="theme-text-secondary text-sm">Eklenti, medya koleksiyonunuzdaki filmlere ve dizilere erişim sağlar</p>
             </div>
             <div>
-                <h4 class="font-medium">Updates</h4>
-                <p class="theme-text-secondary text-sm">The addon will automatically sync with your media library changes</p>
+                <h4 class="font-medium">Güncellemeler</h4>
+                <p class="theme-text-secondary text-sm">Eklenti, medya kitaplığınızdaki değişikliklerle otomatik olarak senkronize edilecektir</p>
             </div>
         </div>
     </div>
