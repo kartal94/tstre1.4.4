@@ -363,7 +363,7 @@ function retryLoad() {
 
 // Delete media with confirmation
 async function deleteMedia(tmdbId, dbIndex, title) {
-    if (!confirm(`"${title} silmek istediğinizden emin misiniz?"?\n\nBu işlem geri alınamaz.`)) return;
+    if (!confirm(`"${title} silmek istediğinizden emin misiniz?"\n\nBu işlem geri alınamaz.`)) return;
     
     try {
         const response = await fetch(`/deneme/api/media/delete?tmdb_id=${tmdbId}&db_index=${dbIndex}&media_type=${mediaType}`, {
