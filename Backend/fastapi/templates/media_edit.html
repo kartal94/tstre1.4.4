@@ -393,7 +393,7 @@ async function deleteQuality(quality) {
         });
         
         if (response.ok) {
-            showSuccessMessage(`${quality} quality deleted successfully`);
+            showSuccessMessage(`${quality} çözünürlük başarıyla silindi`);
             setTimeout(() => location.reload(), 1000);
         } else {
             const error = await response.json();
@@ -437,7 +437,7 @@ async function deleteTVEpisode(season, episode) {
         });
         
         if (response.ok) {
-            showSuccessMessage(`Episode ${episode} deleted successfully`);
+            showSuccessMessage(`${episode} bölüm başarıyla silindi`);
             setTimeout(() => location.reload(), 1000);
         } else {
             const error = await response.json();
