@@ -1,114 +1,46 @@
 {% extends "base.html" %}
 
-{% block title %}Stremio Kurulum Kılavuzu{% endblock %}
+{% block title %}Giriş Yap{% endblock %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    <!-- Header -->
-    <div class="mb-8 text-center">
-        <h1 class="text-3xl font-bold">Stremio Eklenti Kurulumu</h1>
-        <p class="theme-text-secondary mt-2">Telegram’daki dizi ve filmleri Stremio üzerinden izlemek için eklentiyi yükleyin.</p>
-    </div>
-    
-    <!-- Installation Steps -->
-    <div class="space-y-6">
-        <div class="theme-card p-6 rounded-lg shadow">
-            <div class="flex items-start space-x-4">
-                <div class="w-8 h-8 theme-primary rounded-full flex items-center justify-center flex-shrink-0">
-                    <span class="text-white font-semibold">1</span>
-                </div>
-                <div>
-                    <h3 class="text-lg font-semibold mb-2">Eklenti URL'sini kopyalayın</h3>
-                    <p class="theme-text-secondary mb-4">Aşağıdaki eklenti adresini kopyalayın</p>
-                    <div class="bg-gray-100 p-4 rounded-md font-mono text-sm break-all">
-                        <span id="addon-url">{{ request.base_url }}stremio/manifest.json</span>
-                        <button onclick="copyToClipboard('addon-url')" 
-                                class="ml-2 text-primary hover:underline">Kopyala</button>
-                    </div>
-                </div>
-            </div>
+<div class="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-md w-full space-y-8">
+        <div class="text-center">
+            <h2 class="text-3xl font-bold">Yönetici Girişi</h2>
+            <p class="mt-2 theme-text-secondary">Yönetici paneline erişmek için oturum açın</p>
         </div>
         
-        <div class="theme-card p-6 rounded-lg shadow">
-            <div class="flex items-start space-x-4">
-                <div class="w-8 h-8 theme-primary rounded-full flex items-center justify-center flex-shrink-0">
-                    <span class="text-white font-semibold">2</span>
-                </div>
-                <div>
-                    <h3 class="text-lg font-semibold mb-2">Stremio'yu aç</h3>
-                    <p class="theme-text-secondary">Cihazınızda Stremio uygulamasını başlatın</p>
-                </div>
-            </div>
+        {% if error %}
+        <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
+            {{ error }}
         </div>
+        {% endif %}
         
-        <div class="theme-card p-6 rounded-lg shadow">
-            <div class="flex items-start space-x-4">
-                <div class="w-8 h-8 theme-primary rounded-full flex items-center justify-center flex-shrink-0">
-                    <span class="text-white font-semibold">3</span>
-                </div>
-                <div>
-                    <h3 class="text-lg font-semibold mb-2">Eklentilere gidin</h3>
-                    <p class="theme-text-secondary">Stremio'nun ana menüsündeki "Eklentiler" bölümüne gidin</p>
-                </div>
+        <form method="post" class="theme-card p-8 rounded-lg shadow-lg space-y-6">
+            <div>
+                <label for="username" class="block text-sm font-medium mb-2">Kullancı adı</label>
+                <input type="text" id="username" name="username" required 
+                       class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
             </div>
-        </div>
+            
+            <div>
+                <label for="password" class="block text-sm font-medium mb-2">Şifre</label>
+                <input type="password" id="password" name="password" required 
+                       class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+            </div>
+            
+            <button type="submit" 
+                    class="w-full theme-primary text-white py-2 px-4 rounded-md hover:opacity-90 transition-opacity font-medium">
+                Giriş Yap
+            </button>
+        </form>
         
-        <div class="theme-card p-6 rounded-lg shadow">
-            <div class="flex items-start space-x-4">
-                <div class="w-8 h-8 theme-primary rounded-full flex items-center justify-center flex-shrink-0">
-                    <span class="text-white font-semibold">4</span>
-                </div>
-                <div>
-                    <h3 class="text-lg font-semibold mb-2">Eklentiyi yükleyin</h3>
-                    <p class="theme-text-secondary mb-4">“‘Eklenti Ekle’ alanına eklenti adresinizi yapıştırın ve ‘Yükle’ye tıklayın.</p>
-                    <div class="bg-blue-50 border border-blue-200 text-blue-700 p-4 rounded-md">
-                        <strong>Uyarı:</strong> Cihazınızın ağdaki bu sunucunun IP adresine erişebildiğinden emin olun.
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Additional Information -->
-    <div class="theme-card p-6 rounded-lg shadow mt-8">
-        <h2 class="text-xl font-semibold mb-4">Ek Bilgiler</h2>
-        <div class="space-y-4">
-            <div>
-                <h4 class="font-medium">Ağ Gereksinimleri</h4>
-                <p class="theme-text-secondary text-sm">Sunucuya internet üzerinden erişilebilmelidir.</p>
-            </div>
-            <div>
-                <h4 class="font-medium">Desteklenen İçerik</h4>
-                <p class="theme-text-secondary text-sm">Eklenti, telegram kanalınızdaki filmlere ve dizilere erişim sağlar.</p>
-            </div>
-            <div>
-                <h4 class="font-medium">Güncellemeler</h4>
-                <p class="theme-text-secondary text-sm">Eklenti, Telegram kanalınızda yapılan değişikliklerle otomatik olarak senkronize olur.</p>
-            </div>
+        <div class="text-center">
+            <p class="theme-text-secondary text-sm">
+                Herkese açık sayfalar: 
+                <a href="/deneme/status" class="text-primary hover:underline">Sistem Durumu</a> | 
+            </p>
         </div>
     </div>
 </div>
-
-<script>
-function copyToClipboard(elementId) {
-    const element = document.getElementById(elementId);
-    const text = element.textContent;
-    
-    navigator.clipboard.writeText(text).then(() => {
-        // Show success message
-        const button = element.nextElementSibling;
-        const originalText = button.textContent;
-        button.textContent = 'Copied!';
-        button.classList.add('text-green-600');
-        
-        setTimeout(() => {
-            button.textContent = originalText;
-            button.classList.remove('text-green-600');
-        }, 2000);
-    }).catch(err => {
-        console.error('Failed to copy: ', err);
-        alert('Failed to copy to clipboard');
-    });
-}
-</script>
 {% endblock %}
