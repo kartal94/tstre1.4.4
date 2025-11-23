@@ -1,7 +1,7 @@
 # Theme configurations based on your color palettes
 THEMES = {
     "purple_gradient": {
-        "name": "Mor Tema",
+        "name": "Mor",
         "colors": {
             "primary": "#A855F7",
             "secondary": "#7C3AED", 
