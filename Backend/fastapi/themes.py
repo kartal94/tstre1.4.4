@@ -1,7 +1,7 @@
 # Theme configurations based on your color palettes
 THEMES = {
     "purple_gradient": {
-        "name": "Purple Gradient",
+        "name": "Mor Tema",
         "colors": {
             "primary": "#A855F7",
             "secondary": "#7C3AED", 
@@ -14,7 +14,7 @@ THEMES = {
         "css_classes": "theme-purple-gradient"
     },
     "blue_navy": {
-        "name": "Navy Blue",
+        "name": "Lacivert",
         "colors": {
             "primary": "#1E40AF",
             "secondary": "#1E3A8A",
@@ -27,7 +27,7 @@ THEMES = {
         "css_classes": "theme-blue-navy"
     },
     "sunset_warm": {
-        "name": "Sunset Warm",
+        "name": "Gün Batımı",
         "colors": {
             "primary": "#F59E0B",
             "secondary": "#DC2626",
@@ -40,7 +40,7 @@ THEMES = {
         "css_classes": "theme-sunset-warm"
     },
     "ocean_mint": {
-        "name": "Ocean Mint",
+        "name": "Okyanus",
         "colors": {
             "primary": "#10B981",
             "secondary": "#059669",
@@ -53,7 +53,7 @@ THEMES = {
         "css_classes": "theme-ocean-mint"
     },
     "dark_professional": {
-        "name": "Dark Professional",
+        "name": "Karanlık",
         "colors": {
             "primary": "#06B6D4",
             "secondary": "#0891B2",
@@ -66,7 +66,7 @@ THEMES = {
         "css_classes": "theme-dark-professional"
     },
     "crimson_elegance": {
-        "name": "Crimson Elegance",
+        "name": "Kızıl Zarafet",
         "colors": {
             "primary": "#DC2626",
             "secondary": "#991B1B",
@@ -79,7 +79,7 @@ THEMES = {
         "css_classes": "theme-crimson-elegance"
     },
     "coral_bliss": {
-        "name": "Coral Bliss",
+        "name": "Mercan Mutluluğu",
         "colors": {
             "primary": "#FF6B6B",
             "secondary": "#EE5A6F",
@@ -92,7 +92,7 @@ THEMES = {
         "css_classes": "theme-coral-bliss"
     },
     "cyber_neon": {
-        "name": "Cyber Neon",
+        "name": "Siber Neon",
         "colors": {
             "primary": "#00FFF0",
             "secondary": "#FF00FF",
@@ -105,7 +105,7 @@ THEMES = {
         "css_classes": "theme-cyber-neon"
     },
     "forest_earth": {
-        "name": "Forest Earth",
+        "name": "Orman Dünyası",
         "colors": {
             "primary": "#2D5016",
             "secondary": "#50623A",
@@ -118,7 +118,7 @@ THEMES = {
         "css_classes": "theme-forest-earth"
     },
     "lavender_dream": {
-        "name": "Lavender Dream",
+        "name": "Lavanta Rüyası",
         "colors": {
             "primary": "#B08BBB",
             "secondary": "#9370DB",
@@ -131,7 +131,7 @@ THEMES = {
         "css_classes": "theme-lavender-dream"
     },
     "golden_luxury": {
-        "name": "Golden Luxury",
+        "name": "Altın Lüks",
         "colors": {
             "primary": "#D4AF37",
             "secondary": "#B8860B",
@@ -144,7 +144,7 @@ THEMES = {
         "css_classes": "theme-golden-luxury"
     },
     "arctic_frost": {
-        "name": "Arctic Frost",
+        "name": "Arktik Don",
         "colors": {
             "primary": "#B0E0E6",
             "secondary": "#4682B4",
@@ -157,7 +157,7 @@ THEMES = {
         "css_classes": "theme-arctic-frost"
     },
     "cherry_cola": {
-        "name": "Cherry Cola",
+        "name": "Kiraz Kolası",
         "colors": {
             "primary": "#BF1922",
             "secondary": "#8B0000",
@@ -170,7 +170,7 @@ THEMES = {
         "css_classes": "theme-cherry-cola"
     },
     "emerald_tech": {
-        "name": "Emerald Tech",
+        "name": "Zümrüt Teknolojisi",
         "colors": {
             "primary": "#047857",
             "secondary": "#065F46",
@@ -183,7 +183,7 @@ THEMES = {
         "css_classes": "theme-emerald-tech"
     },
     "midnight_carbon": {
-        "name": "Midnight Carbon",
+        "name": "Gece Yarısı Karbonu",
         "colors": {
             "primary": "#3B82F6",
             "secondary": "#1E40AF",
