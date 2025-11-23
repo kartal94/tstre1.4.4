@@ -238,7 +238,7 @@
                     <div class="flex items-center justify-between">
                         <h4 class="text-base sm:text-lg font-semibold text-gray-900">Sezon {{ season.season_number }}</h4>
                         <div class="flex items-center gap-2 sm:gap-4">
-                            <span class="text-xs sm:text-sm text-gray-600">{{ season.episodes|length }} {{ 's' if season.episodes|length != 1 else '' }}Bölüm</span>
+                            <span class="text-xs sm:text-sm text-gray-600">{{ season.episodes|length }} Bölüm</span>
                             <button onclick="toggleSeason({{ loop.index0 }})" 
                                     class="text-blue-600 hover:text-blue-800 transition-colors p-1">
                                 <svg id="season-arrow-{{ loop.index0 }}" class="w-4 h-4 sm:w-5 sm:h-5 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
