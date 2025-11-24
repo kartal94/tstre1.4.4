@@ -4,9 +4,19 @@
 
 {% block content %}
 <div class="min-h-screen">
-            <!-- Media Management Section -->
+    <!-- Header with just status pill -->
+    <header class="theme-card shadow-lg mb-8">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <h1 class="text-3xl font-bold text-primary">Medya Yönetimi</h1>
+                </div>
+            </div>
+        </div>
+    </header>
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
+                        <!-- Media Management Section -->
         <div class="mb-12">
-            <h2 class="text-2xl font-bold mb-6">Medya Yönetimi</h2>
             <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <a href="/deneme/media/manage?media_type=movie" class="block theme-card rounded-xl p-8 shadow-xl hover:shadow-2xl transition-all group">
                     <div class="flex items-center">
@@ -39,19 +49,6 @@
                 </a>
             </div>
         </div>
-
-    <!-- Header with just status pill -->
-    <header class="theme-card shadow-lg mb-8">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-            <div class="flex items-center justify-between">
-                <div class="flex items-center space-x-4">
-                    <h1 class="text-3xl font-bold text-primary">Sistem bilgileri</h1>
-                </div>
-            </div>
-        </div>
-    </header>
-
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
         <!-- System Status Section -->
         <div class="mb-12">
             <div class="grid lg:grid-cols-2 gap-8">
