@@ -1,5 +1,18 @@
 # Theme configurations based on your color palettes
 THEMES = {
+        "blue_navy": {
+        "name": "Lacivert",
+        "colors": {
+            "primary": "#1E40AF",
+            "secondary": "#1E3A8A",
+            "accent": "#3B82F6",
+            "background": "#F1F5F9",
+            "card": "#FFFFFF",
+            "text": "#1E293B",
+            "text_secondary": "#475569"
+        },
+        "css_classes": "theme-blue-navy"
+    },
     "purple_gradient": {
         "name": "Mor",
         "colors": {
@@ -13,19 +26,6 @@ THEMES = {
         },
         "css_classes": "theme-purple-gradient"
 },
-    "blue_navy": {
-        "name": "Lacivert",
-        "colors": {
-            "primary": "#1E40AF",
-            "secondary": "#1E3A8A",
-            "accent": "#3B82F6",
-            "background": "#F1F5F9",
-            "card": "#FFFFFF",
-            "text": "#1E293B",
-            "text_secondary": "#475569"
-        },
-        "css_classes": "theme-blue-navy"
-    },
     "sunset_warm": {
         "name": "Gün Batımı",
         "colors": {
