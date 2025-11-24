@@ -3,20 +3,18 @@
 {% block title %}Giriş Yap{% endblock %}
 
 {% block content %}
+<!-- Navbar -->
 <nav class="theme-card shadow-lg border-b">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <div class="flex justify-between items-center h-16">
-      <!-- Logo -->
       <div class="flex items-center space-x-4">
         <h1 class="text-2xl font-bold text-primary">Stremio</h1>
       </div>
 
-      <!-- Desktop Menü -->
       <div class="hidden md:flex items-center space-x-4">
         <a href="/deneme/" class="text-text hover:text-primary px-3 py-2 rounded-md transition-colors">Kontrol Paneli</a>
         <a href="/deneme/media/manage" class="text-text hover:text-primary px-3 py-2 rounded-md transition-colors">Medya Yönetimi</a>
 
-        <!-- Tema Seçici -->
         <form method="post" action="/deneme/set-theme" id="theme-form">
           <select name="theme" onchange="document.getElementById('theme-form').submit()"
             class="theme-card border border-gray-300 rounded-md px-3 py-2 text-sm">
@@ -28,7 +26,6 @@
           </select>
         </form>
 
-        <!-- Kullanıcı veya Giriş Butonu -->
         {% if current_user %}
         <span class="text-sm theme-text-secondary">{{ current_user }}</span>
         <a href="/deneme/logout"
@@ -40,7 +37,6 @@
         {% endif %}
       </div>
 
-      <!-- Mobile Hamburger -->
       <div class="md:hidden flex items-center">
         <button id="mobile-menu-button"
           class="inline-flex items-center justify-center p-2 rounded-md text-text hover:text-primary focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary">
@@ -53,12 +49,10 @@
     </div>
   </div>
 
-  <!-- Mobile Menü Dropdown -->
   <div id="mobile-menu" class="hidden md:hidden px-2 pt-2 pb-3 space-y-1">
     <a href="/deneme/" class="block text-text hover:text-primary px-3 py-2 rounded-md transition-colors">Kontrol Paneli</a>
     <a href="/deneme/media/manage" class="block text-text hover:text-primary px-3 py-2 rounded-md transition-colors">Medya Yönetimi</a>
-
-    <!-- Tema Seçici -->
+    
     <form method="post" action="/deneme/set-theme" id="theme-form-mobile" class="mt-2">
       <select name="theme" onchange="document.getElementById('theme-form-mobile').submit()"
         class="theme-card border border-gray-300 rounded-md px-3 py-2 w-full text-sm">
@@ -70,7 +64,6 @@
       </select>
     </form>
 
-    <!-- Kullanıcı veya Giriş -->
     {% if current_user %}
     <span class="block text-text theme-text-secondary px-3 py-2">{{ current_user }}</span>
     <a href="/deneme/logout"
@@ -83,7 +76,6 @@
   </div>
 </nav>
 
-<!-- Hamburger Menü JS -->
 <script>
   const button = document.getElementById('mobile-menu-button');
   const menu = document.getElementById('mobile-menu');
@@ -91,5 +83,41 @@
     menu.classList.toggle('hidden');
   });
 </script>
+
+<!-- Login Formu -->
+<div class="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-gray-50">
+  <div class="w-full max-w-md space-y-8">
+    <div class="text-center">
+      <h2 class="text-3xl font-bold text-primary">Yönetici Girişi</h2>
+      <p class="mt-2 theme-text-secondary text-sm">Yönetici paneline erişmek için oturum açın</p>
+    </div>
+
+    {% if error %}
+    <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md mb-4 text-sm">
+      {{ error }}
+    </div>
+    {% endif %}
+
+    <form method="post" class="theme-card p-8 rounded-xl shadow-xl space-y-6">
+      <div>
+        <label for="username" class="block text-sm font-medium mb-2">Kullanıcı Adı</label>
+        <input type="text" id="username" name="username" required
+          value="{{ username|default('') }}"
+          class="w-full px-3 py-2 border border-gray-300 rounded-md text-text placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+      </div>
+
+      <div>
+        <label for="password" class="block text-sm font-medium mb-2">Şifre</label>
+        <input type="password" id="password" name="password" required
+          class="w-full px-3 py-2 border border-gray-300 rounded-md text-text placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+      </div>
+
+      <button type="submit"
+        class="w-full theme-primary text-white py-2 px-4 rounded-md hover:opacity-90 transition-opacity font-medium">
+        Giriş Yap
+      </button>
+    </form>
+  </div>
+</div>
 
 {% endblock %}
