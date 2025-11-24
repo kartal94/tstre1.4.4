@@ -16,7 +16,7 @@ async def login_page(request: Request):
     if is_authenticated(request):
         return RedirectResponse(url="/", status_code=302)
     
-    theme_name = request.session.get("theme", "purple_gradient")
+    theme_name = request.session.get("theme", "blue_navy")
     theme = get_theme(theme_name)
     
     return templates.TemplateResponse("login.html", {
@@ -32,7 +32,7 @@ async def login_post(request: Request, username: str = Form(...), password: str 
         request.session["username"] = username
         return RedirectResponse(url="/", status_code=302)
     else:
-        theme_name = request.session.get("theme", "purple_gradient")
+        theme_name = request.session.get("theme", "blue_navy")
         theme = get_theme(theme_name)
         return templates.TemplateResponse("login.html", {
             "request": request,
