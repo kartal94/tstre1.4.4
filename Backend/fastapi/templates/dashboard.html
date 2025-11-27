@@ -84,84 +84,91 @@
             </div>
         </div>
 
-        <!-- Database Statistics Section -->
-        <div class="mb-12">
-            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {% if system_stats.databases %}
-                    {% for db_stat in system_stats.databases %}
-                    <div class="theme-card rounded-xl p-6 shadow-xl">
-                        <div class="flex items-center justify-between mb-4">
-                            <h3 class="text-lg font-semibold">{{ db_stat.db_name.replace("storage_", "Veritabanı ") }}</h3>
-                            <div class="w-8 h-8 theme-primary rounded-lg flex items-center justify-center bg-opacity-20 text-primary">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="white">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"></path>
-                                </svg>
-                            </div>
-                        </div>
-                        
-                        <div class="space-y-3">
-                            <div class="flex justify-between text-sm">
-                                <span class="theme-text-secondary">Filmler</span>
-                                <span class="text-primary font-semibold">{{ "{:,}".format(db_stat.movie_count) }}</span>
-                            </div>
-                            <div class="flex justify-between text-sm">
-                                <span class="theme-text-secondary">Diziler</span>
-                                <span class="text-primary font-semibold">{{ "{:,}".format(db_stat.tv_count) }}</span>
-                            </div>
-                            <div class="mt-4">
-                                <div class="flex justify-between text-sm mb-1">
-                                    <span class="theme-text-secondary">Kullanılan Depolama</span>
-                                    <span class="text-xs">{{ "%.1f"|format(db_stat.storageSize / 1024 / 1024) }} MB</span>
-                                </div>
-                                {% set storage_percent = (db_stat.storageSize / (500 * 1024 * 1024) * 100) | round %}
-                                <div class="w-full bg-gray-200 rounded-full h-2">
-                                    <div class="theme-primary h-2 rounded-full" style="width: {{ storage_percent }}%"></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    {% endfor %}
-                {% else %}
-                    <div class="col-span-full text-center theme-text-secondary py-8">Veritabanı istatistikleri mevcut değil</div>
-                {% endif %}
-            </div>
-        </div>
+<div class="grid lg:grid-cols-2 gap-8 items-stretch">
 
-        <!-- Media Management Section -->
-        <div class="mb-12">
-
-            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <a href="/deneme/media/manage?media_type=movie" class="block theme-card rounded-xl p-8 shadow-xl hover:shadow-2xl transition-all group">
-                    <div class="flex items-center">
-                        <div class="w-16 h-16 theme-primary rounded-lg flex items-center justify-center mr-6 group-hover:scale-110 transition-transform bg-opacity-20 text-primary">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="white">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2h4a1 1 0 110 2h-1v12a2 2 0 01-2-2V6H3a1 1 0 110-2h4zM9 6v10h6V6H9z"></path>
+    <!-- LEFT SIDE: DATABASE SECTION -->
+    <div class="mb-12 h-full">
+        <div class="grid md:grid-cols-2 gap-6 h-full">
+            {% if system_stats.databases %}
+                {% for db_stat in system_stats.databases %}
+                <div class="theme-card rounded-xl p-6 shadow-xl h-full flex flex-col">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-semibold">{{ db_stat.db_name.replace("storage_", "Veritabanı ") }}</h3>
+                        <div class="w-8 h-8 theme-primary rounded-lg flex items-center justify-center bg-opacity-20 text-primary">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="white">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"></path>
                             </svg>
                         </div>
-                        <div>
-                            <h3 class="text-xl font-semibold mb-2">Filmleri Yönet</h3>
-                            <p class="theme-text-secondary">Filmleri düzenle</p>
-                            <div class="mt-2 text-primary font-semibold text-sm">{{ system_stats.movies|default(0) }} film</div>
-                        </div>
                     </div>
-                </a>
 
-                <a href="/deneme/media/manage?media_type=tv" class="block theme-card rounded-xl p-8 shadow-xl hover:shadow-2xl transition-all group">
-                    <div class="flex items-center">
-                        <div class="w-16 h-16 theme-primary rounded-lg flex items-center justify-center mr-6 group-hover:scale-110 transition-transform bg-opacity-20 text-primary">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="white">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
-                            </svg>
+                    <div class="space-y-3 flex-grow">
+                        <div class="flex justify-between text-sm">
+                            <span class="theme-text-secondary">Filmler</span>
+                            <span class="text-primary font-semibold">{{ "{:,}".format(db_stat.movie_count) }}</span>
                         </div>
-                        <div>
-                            <h3 class="text-xl font-semibold mb-2">Dizileri yönet</h3>
-                            <p class="theme-text-secondary">Dizileri düzenle</p>
-                            <div class="mt-2 text-primary font-semibold text-sm">{{ system_stats.tv_shows|default(0) }} Diziler</div>
+                        <div class="flex justify-between text-sm">
+                            <span class="theme-text-secondary">Diziler</span>
+                            <span class="text-primary font-semibold">{{ "{:,}".format(db_stat.tv_count) }}</span>
+                        </div>
+
+                        <div class="mt-4">
+                            <div class="flex justify-between text-sm mb-1">
+                                <span class="theme-text-secondary">Kullanılan Depolama</span>
+                                <span class="text-xs">{{ "%.1f"|format(db_stat.storageSize / 1024 / 1024) }} MB</span>
+                            </div>
+
+                            {% set storage_percent = (db_stat.storageSize / (500 * 1024 * 1024) * 100) | round %}
+                            <div class="w-full bg-gray-200 rounded-full h-2">
+                                <div class="theme-primary h-2 rounded-full" style="width: {{ storage_percent }}%"></div>
+                            </div>
                         </div>
                     </div>
-                </a>
-            </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="col-span-full text-center theme-text-secondary py-8">Veritabanı istatistikleri mevcut değil</div>
+            {% endif %}
         </div>
+    </div>
+
+    <!-- RIGHT SIDE: MEDIA MANAGEMENT SECTION -->
+    <div class="mb-12 h-full flex flex-col">
+        <div class="grid md:grid-cols-1 gap-6 h-full">
+
+            <a href="/deneme/media/manage?media_type=movie" class="block theme-card rounded-xl p-8 shadow-xl h-full hover:shadow-2xl transition-all group">
+                <div class="flex items-center">
+                    <div class="w-16 h-16 theme-primary rounded-lg flex items-center justify-center mr-6 group-hover:scale-110 transition-transform bg-opacity-20 text-primary">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="white">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2h4a1 1 0 110 2h-1v12a2 2 0 01-2-2V6H3a1 1 0 110-2h4zM9 6v10h6V6H9z"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-semibold mb-2">Filmleri Yönet</h3>
+                        <p class="theme-text-secondary">Filmleri düzenle</p>
+                        <div class="mt-2 text-primary font-semibold text-sm">{{ system_stats.movies|default(0) }} film</div>
+                    </div>
+                </div>
+            </a>
+
+            <a href="/deneme/media/manage?media_type=tv" class="block theme-card rounded-xl p-8 shadow-xl h-full hover:shadow-2xl transition-all group">
+                <div class="flex items-center">
+                    <div class="w-16 h-16 theme-primary rounded-lg flex items-center justify-center mr-6 group-hover:scale-110 transition-transform bg-opacity-20 text-primary">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="white">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-semibold mb-2">Dizileri Yönet</h3>
+                        <p class="theme-text-secondary">Dizileri düzenle</p>
+                        <div class="mt-2 text-primary font-semibold text-sm">{{ system_stats.tv_shows|default(0) }} dizi</div>
+                    </div>
+                </div>
+            </a>
+
+        </div>
+    </div>
+
+</div>
 
         <!-- Stremio Addon Section -->
         <div class="theme-card rounded-xl p-8 shadow-xl">
