@@ -1,13 +1,9 @@
 from pyrogram import Client, filters, enums
 from pyrogram.types import Message
 from Backend.config import Telegram
+from Backend.database import db_stat   # 🔥 SENİN GERÇEK STAT DOSYAN BURASI
 
 def hex_bar(percent: int, size: int = 12):
-    """
-    Altıgen bar üretir:
-    Dolu: ⬢
-    Boş: ⬡
-    """
     filled = int((percent / 100) * size)
     empty = size - filled
     return "⬢" * filled + "⬡" * empty
@@ -18,15 +14,11 @@ async def send_start_message(client: Client, message: Message):
         base_url = Telegram.BASE_URL
         addon_url = f"{base_url}/stremio/manifest.json"
 
-        # 🎯 db_stat verisini burada alıyorsun (örnek)
-        db_stat = get_database_stats()  
-        # örn: db_stat.storageSize → bytes
-
         # Jinja eşdeğeri:
         # {{ "%.1f"|format(db_stat.storageSize / 1024 / 1024) }}
         used_mb = float(f"{db_stat.storageSize / 1024 / 1024:.1f}")
 
-        total_mb = 500  # Toplam alan
+        total_mb = 500  # Kullanacağın limit (MB)
         percent = round((used_mb / total_mb) * 100)
 
         bar = hex_bar(percent)
