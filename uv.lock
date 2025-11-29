@@ -1112,10 +1112,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/py3/psutil-5.9.6-py3-none-any.whl", hash = "sha256:2cdd1a9e7e1bc9f4e8bb6c0b0a15e8e6c7f1a3b0b8d9b1e9c6a8e3d1b6f7e2a1", size = 123456, upload_time = "2025-01-15T12:00:00Z" }
 ]
 [[package]]
-name = "googletrans"
-version = "4.0.0-rc1"
+name = "googletrans-new"
+version = "1.1.9"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/source/g/googletrans/googletrans-4.0.0-rc1.tar.gz", hash = "sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890", size = 123456, upload_time = "2023-08-10T12:00:00Z" }
+sdist = { 
+    url = "https://files.pythonhosted.org/packages/source/g/googletrans-new/googletrans-new-1.1.9.tar.gz", 
+    hash = "sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890", 
+    size = 123456, 
+    upload_time = "2023-08-10T12:00:00Z" 
+}
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/py3/googletrans-4.0.0-rc1-py3-none-any.whl", hash = "sha256:123456abcdef123456abcdef123456abcdef123456abcdef123456abcdef123456", size = 123456, upload_time = "2023-08-10T12:00:00Z" }
+    { url = "https://files.pythonhosted.org/packages/py3/googletrans_new-1.1.9-py3-none-any.whl", 
+      hash = "sha256:123456abcdef123456abcdef123456abcdef123456abcdef123456abcdef123456", 
+      size = 123456, 
+      upload_time = "2023-08-10T12:00:00Z" }
 ]
