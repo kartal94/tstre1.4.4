@@ -1,28 +1,38 @@
-import psutil
-import time
 from pyrofork import Plugin
+from psutil import virtual_memory, cpu_percent, disk_usage
+import datetime
 
-plugin = Plugin(name="system_info")
+yedek = Plugin("yedek")
 
-@plugin.command("status")
-async def status(ctx):
-    """
-    Bot sistem durumunu gösterir: CPU, RAM ve uptime (hh:mm:ss).
-    """
-    # CPU ve RAM bilgisi
-    cpu_percent = psutil.cpu_percent(interval=1)
-    ram = psutil.virtual_memory()
+def format_bytes(size):
+    # Baytları insan tarafından okunabilir şekilde dönüştür
+    for unit in ["B", "KB", "MB", "GB", "TB"]:
+        if size < 1024:
+            return f"{size:.2f} {unit}"
+        size /= 1024
+    return f"{size:.2f} PB"
 
-    # Uptime hesaplama
-    uptime_seconds = time.time() - psutil.boot_time()
-    hours, remainder = divmod(uptime_seconds, 3600)
-    minutes, seconds = divmod(remainder, 60)
-
+@yedek.on_cmd("/yedek")
+async def yedek_status(client, message):
+    # CPU
+    cpu = cpu_percent(interval=1)
+    
+    # RAM
+    ram = virtual_memory()
+    
+    # Disk (root)
+    disk = disk_usage("/")
+    
+    # Uptime
+    now = datetime.datetime.now()
+    
     # Mesaj formatı
-    msg = (
-        f"CPU: {cpu_percent}% | FREE: {ram.available / (1024**3):.2f}GB\n"
-        f"RAM: {ram.percent}% | UPTIME: {int(hours)}h{int(minutes)}m{int(seconds)}s"
+    status_msg = (
+        f"📊 **System Status**\n\n"
+        f"**CPU:** {cpu}%\n"
+        f"**RAM:** {ram.percent}% ({format_bytes(ram.used)} / {format_bytes(ram.total)})\n"
+        f"**Disk:** {disk.percent}% ({format_bytes(disk.used)} / {format_bytes(disk.total)})\n"
+        f"**Time:** {now.strftime('%d-%b-%y %I:%M:%S %p')}"
     )
-
-    # Telegram cevabı
-    await ctx.reply(msg)
+    
+    await message.reply(status_msg)
