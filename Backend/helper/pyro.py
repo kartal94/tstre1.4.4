@@ -148,6 +148,8 @@ commands = [
     BotCommand("fixmetadata", "⚙️ Meta Veri'nin boş alanlarını düzeltin"),
     BotCommand("log", "📄 Günlük dosyasını gönder"),
     BotCommand("restart", "♻️ Botu yeniden başlat"),
+    BotCommand("istatistik", "📊 Bot istatistiklerini görüntüle"),
+    BotCommand("cevir", "Filmler ve dizileri Türkçeye çevir"),
 ]
 
 
