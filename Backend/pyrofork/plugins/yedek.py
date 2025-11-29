@@ -18,17 +18,19 @@ async def system_status(client: Client, message: Message):
         disk = disk_usage(DOWNLOAD_DIR)
         free_disk = round(disk.free / (1024 ** 3), 2)
         total_disk = round(disk.total / (1024 ** 3), 2)
+        disk_percent = round((disk.free / disk.total) * 100, 1)
 
         # Uptime hesapla
         uptime_sec = int(time() - bot_start_time)
         hours, remainder = divmod(uptime_sec, 3600)
         minutes, seconds = divmod(remainder, 60)
-        uptime = f"{hours}h {minutes}m {seconds}s"
+        uptime = f"{hours}h{minutes}m{seconds}s"
 
-        # Mesajı hazırla
+        # Mesajı hazırla (görsel format)
         text = (
-            f"CPU: {cpu}% | RAM: {ram}%\n"
-            f"Disk: {free_disk}/{total_disk} GB free | Uptime: {uptime}"
+            "⌬ Bot Stats\n"
+            f"┟ CPU → {cpu}% | F → {free_disk}GB [{disk_percent}%]\n"
+            f"┖ RAM → {ram}% | UP → {uptime}"
         )
 
         # Cevap gönder
