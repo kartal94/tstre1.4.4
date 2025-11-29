@@ -6,7 +6,6 @@ from deep_translator import GoogleTranslator
 import os
 import importlib.util
 import time
-import math
 
 # ------------ DATABASE'i config.py'den alma ------------
 CONFIG_PATH = "/home/debian/tstre1.4.4/config.py"
@@ -23,18 +22,14 @@ def get_db_urls():
     db_raw = read_database_from_config()
     if not db_raw:
         db_raw = os.getenv("DATABASE", "")
-    urls = [u.strip() for u in db_raw.split(",") if u.strip()]
-    # Virgülden sonraki ikinci database kullan
-    if len(urls) >= 2:
-        return [urls[1]]
-    return urls
+    return [u.strip() for u in db_raw.split(",") if u.strip()]
 
 # ------------ DATABASE Bağlantısı ------------
 db_urls = get_db_urls()
-if not db_urls:
-    raise Exception("DATABASE bulunamadı!")
+if len(db_urls) < 2:
+    raise Exception("İkinci DATABASE bulunamadı!")
 
-MONGO_URL = db_urls[0]
+MONGO_URL = db_urls[1]  # Virgülden sonraki ikinci database
 client = MongoClient(MONGO_URL)
 db_name = client.list_database_names()[0]
 db = client[db_name]
@@ -42,31 +37,27 @@ db = client[db_name]
 movie_col = db["movie"]
 series_col = db["tv"]
 
-# ------------ Güvenli Çeviri Fonksiyonu (deep-translator) ------------
+translator = GoogleTranslator(source='en', target='tr')
+
+# ------------ Güvenli Çeviri Fonksiyonu ------------
 def translate_text_safe(text):
     if not text or str(text).strip() == "":
         return ""
     try:
-        return GoogleTranslator(source='en', target='tr').translate(str(text))
-    except Exception as e:
-        print(f"Çeviri hatası: {e}")
+        return translator.translate(str(text))
+    except Exception:
         return str(text)
 
-# ------------ Progres bar ve ETA ------------
-def progress_bar_eta(current, total, elapsed, bar_length=20):
+# ------------ Progres bar ------------
+def progress_bar_eta(current, total, bar_length=12):
     if total == 0:
-        return "[--------------------] %0 ETA: 0s"
-    percent = int((current / total) * 100)
-    filled = int(bar_length * current // total)
-    bar = "█" * filled + "-" * (bar_length - filled)
-    if current == 0:
-        eta = 0
-    else:
-        rate = elapsed / current
-        eta = int(rate * (total - current))
-    return f"[{bar}] %{percent} ETA: {eta}s"
+        return "[⬡" + "⬡"*(bar_length-1) + "] 0%"
+    percent = (current / total) * 100
+    filled_length = int(bar_length * current // total)
+    bar = "⬢" * filled_length + "⬡" * (bar_length - filled_length)
+    return f"[{bar}] {percent:.2f}%"
 
-# ------------ Koleksiyon İşleyici (Tek Mesaj Güncelleme) ------------
+# ------------ Koleksiyon İşleyici ------------
 async def process_collection_interactive(collection, name, message, start_msg_id):
     data = list(collection.find({}))
     total = len(data)
@@ -76,7 +67,7 @@ async def process_collection_interactive(collection, name, message, start_msg_id
     start_time = time.time()
 
     while done < total:
-        batch = data[done:done+20]  # 20 içeriklik batch
+        batch = data[done:done+20]  # 20 içerik batch
         for row in batch:
             update_dict = {}
             try:
@@ -106,21 +97,20 @@ async def process_collection_interactive(collection, name, message, start_msg_id
             done += 1
             elapsed = time.time() - start_time
 
-        # Mesaj güncelle (aynı içerikse Telegram hatası vermemesi için try-except)
+        # Mesaj güncelle
+        bar_eta = progress_bar_eta(done, total)
+        text = f"{name}: {done}/{total} içerik işlendi {bar_eta}\nKalan: {total - done}, Hatalar: {errors}"
         try:
-            bar_eta = progress_bar_eta(done, total, elapsed)
-            text = f"{name}: {done}/{total} içerik işlendi {bar_eta}\nKalan: {total - done}, Hatalar: {errors}"
             await message.edit_text(text)
         except Exception:
-            pass
+            pass  # Mesaj aynıysa veya hata olursa geç
 
     elapsed_time = round(time.time() - start_time, 2)
     return total, done, errors, elapsed_time
 
-# ------------ /cevir Komutu (Interaktif) ------------
+# ------------ /cevir Komutu ------------
 @Client.on_message(filters.command("cevir") & filters.private & CustomFilters.owner)
 async def turkce_icerik(client: Client, message: Message):
-    # Başlatma mesajı
     start_msg = await message.reply_text(
         "🇹🇷 Film ve dizi açıklamaları Türkçeye çevriliyor…\nİlerleme tek mesajda gösterilecektir.",
         parse_mode=enums.ParseMode.MARKDOWN
@@ -136,7 +126,7 @@ async def turkce_icerik(client: Client, message: Message):
         series_col, "Diziler", start_msg, start_msg.id
     )
 
-    # -------- Super Özet Tablosu --------
+    # -------- Özet --------
     total_all = movie_total + series_total
     done_all = movie_done + series_done
     errors_all = movie_errors + series_errors
