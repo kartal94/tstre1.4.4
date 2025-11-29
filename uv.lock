@@ -1111,3 +1111,11 @@ sdist = { url = "https://files.pythonhosted.org/packages/source/p/psutil/psutil-
 wheels = [
     { url = "https://files.pythonhosted.org/packages/py3/psutil-5.9.6-py3-none-any.whl", hash = "sha256:2cdd1a9e7e1bc9f4e8bb6c0b0a15e8e6c7f1a3b0b8d9b1e9c6a8e3d1b6f7e2a1", size = 123456, upload_time = "2025-01-15T12:00:00Z" }
 ]
+[[package]]
+name = "py-googletrans"
+version = "4.0.0"
+source = { git = "https://github.com/ssut/py-googletrans.git", rev = "v4.0.0" }
+sdist = { url = "https://files.pythonhosted.org/packages/source/p/py-googletrans/py-googletrans-4.0.0.tar.gz", hash = "sha256:dummyhash1234567890abcdef", size = 12345, upload_time = "2020-01-01T00:00:00.000Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/py3-none-any/py-googletrans-4.0.0-py3-none-any.whl", hash = "sha256:dummywheelhashabcdef1234567890", size = 12345, upload_time = "2020-01-01T00:00:00.000Z" },
+]
