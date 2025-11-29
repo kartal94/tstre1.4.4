@@ -2,25 +2,22 @@ from pyrogram import filters, Client, enums
 from pyrogram.types import Message
 from Backend.helper.custom_filter import CustomFilters
 from Backend.config import Telegram
-# Yeni ve doğru modül yolundan istatistik fonksiyonunu içe aktarın.
-# Bu satır, ModuleNotFoundError hatasını çözmektedir.
+# Döngüsel içe aktarma hatasını çözdükten sonraki doğru içe aktarma yolu
 from Backend.helper.stats_utils import get_db_stats 
 
 @Client.on_message(filters.command('start') & filters.private & CustomFilters.owner, group=10)
 async def send_start_message(client: Client, message: Message):
     """
-    Bot sahibine Stremio eklenti adresini ve anlık sistem istatistiklerini (MongoDB'den çekilen) 
-    içeren detaylı bir mesaj gönderir.
+    Bot sahibine Stremio eklenti adresini ve MongoDB'den çekilen sistem istatistiklerini gönderir.
     """
     try:
-        # 1. Veritabanı istatistiklerini asenkron olarak çeker
-        # Bu fonksiyon, formatted_movies, formatted_tv ve formatted_storage değerlerini döndürür.
+        # 1. Veritabanı istatistiklerini asenkron olarak çekme
         stats = await get_db_stats() 
         
         base_url = Telegram.BASE_URL
         addon_url = f"{base_url}/stremio/manifest.json"
 
-        # 2. Mesaj metnini istatistiklerle birlikte oluşturun
+        # 2. Mesaj metnini istatistiklerle birlikte oluşturma
         message_text = (
             '🎉 **Telegram Stremio Medya Sunucusu Durum Raporu**\n\n'
             
@@ -43,6 +40,6 @@ async def send_start_message(client: Client, message: Message):
         )
 
     except Exception as e:
-        # Hata durumunda (DB bağlantısı, vb.) kullanıcıya ve konsola bilgi verin
+        # İstatistik çekme veya mesaj gönderme sırasında oluşabilecek hataları yakalar
         await message.reply_text(f"⚠️ Hata oluştu: İstatistikler alınamadı veya sunucu yapılandırılamadı.\n\nHata Detayı: `{e}`")
         print(f"Error in /start handler: {e}")
