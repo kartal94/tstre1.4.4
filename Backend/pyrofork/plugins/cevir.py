@@ -64,6 +64,7 @@ async def process_collection_interactive(collection, name, message):
     done = 0
     errors = 0
     start_time = time.time()
+    last_update = 0  # Son mesaj güncelleme zamanı
 
     while done < total:
         batch = data[done:done+20]  # 20 içerik batch
@@ -94,14 +95,17 @@ async def process_collection_interactive(collection, name, message):
                 print(f"Hata: {e}")
 
             done += 1
+            current_time = time.time()
 
-        # Mesaj güncelle
-        bar = progress_bar(done, total)
-        text = f"{name}: {done}/{total}\n{bar}\nKalan: {total - done}, Hatalar: {errors}"
-        try:
-            await message.edit_text(text)
-        except Exception:
-            pass  # Mesaj aynıysa veya hata olursa geç
+            # Mesaj güncellemesi: en az 30 sn geçtiyse veya tamamlandıysa
+            if current_time - last_update > 30 or done == total:
+                bar = progress_bar(done, total)
+                text = f"{name}: {done}/{total}\n{bar}\nKalan: {total - done}, Hatalar: {errors}"
+                try:
+                    await message.edit_text(text)
+                except Exception:
+                    pass
+                last_update = current_time
 
     elapsed_time = round(time.time() - start_time, 2)
     return total, done, errors, elapsed_time
