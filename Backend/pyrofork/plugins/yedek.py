@@ -3,26 +3,32 @@ from pyrogram.types import Message
 from psutil import virtual_memory, cpu_percent, disk_usage
 from time import time
 
-# Bot başlama zamanı (genellikle main.py veya init dosyasında)
+# Bot başlama zamanı
 bot_start_time = time()
 
-# Disk kullanımını kontrol etmek için dizin (root veya download klasörü)
+# Disk kullanımını kontrol etmek için dizin
 DOWNLOAD_DIR = "/"
 
 @Client.on_message(filters.command("yedek") & filters.private)
 async def system_status(client: Client, message: Message):
     try:
         # Sistem bilgilerini al
-        cpu = cpu_percent()
+        cpu = cpu_percent(interval=1)  # CPU kullanımını ölç
         ram = virtual_memory().percent
-        free_disk = round(disk_usage(DOWNLOAD_DIR).free / (1024 ** 3), 2)  # GB cinsinden
-        uptime_sec = time() - bot_start_time
-        uptime = f"{int(uptime_sec // 3600)}h{int((uptime_sec % 3600) // 60)}m"
+        disk = disk_usage(DOWNLOAD_DIR)
+        free_disk = round(disk.free / (1024 ** 3), 2)
+        total_disk = round(disk.total / (1024 ** 3), 2)
+
+        # Uptime hesapla
+        uptime_sec = int(time() - bot_start_time)
+        hours, remainder = divmod(uptime_sec, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        uptime = f"{hours}h {minutes}m {seconds}s"
 
         # Mesajı hazırla
         text = (
-            f"CPU: {cpu}% | FREE: {free_disk}GB\n"
-            f"RAM: {ram}% | UPTIME: {uptime}"
+            f"CPU: {cpu}% | RAM: {ram}%\n"
+            f"Disk: {free_disk}/{total_disk} GB free | Uptime: {uptime}"
         )
 
         # Cevap gönder
