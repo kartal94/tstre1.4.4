@@ -1,39 +1,24 @@
-# Temel imaj
-FROM python:3.11-slim
+FROM ghcr.io/astral-sh/uv:debian-slim
 
-# Sistem bağımlılıkları
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    curl \
-    git \
-    locales \
-    xauth \
-    && locale-gen en_US.UTF-8 \
-    && rm -rf /var/lib/apt/lists/*
-
-# Locale ayarı
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
 ENV LANG=en_US.UTF-8
-ENV LANGUAGE=en_US:en
-ENV LC_ALL=en_US.UTF-8
+ENV PATH="/app/.venv/bin:$PATH"
 
-# Çalışma dizini
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+	bash \
+        git \
+        curl \
+        ca-certificates \
+        locales && \
+    locale-gen en_US.UTF-8 && \
+    rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
-
-# Poetry kurulumu
-RUN curl -sSf https://install.python-poetry.org | python3 - \
-    && export PATH="/root/.local/bin:$PATH" \
-    && ln -s /root/.local/bin/poetry /usr/local/bin/poetry \
-    && ln -s /root/.local/bin/uv /usr/local/bin/uv
-
-# Proje dosyalarını kopyala
 COPY . .
-
-# UV ortamını kur ve bağımlılıkları yükle
-ENV PATH="/root/.local/bin:$PATH"
-RUN uv sync
-
-# start.sh dosyasına çalıştırma izni ver
+RUN uv lock
+RUN uv sync --locked
 RUN chmod +x start.sh
-
-# Container başladığında çalışacak komut
-CMD ["./start.sh"]
+CMD ["bash", "start.sh"]
