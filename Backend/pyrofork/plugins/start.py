@@ -58,7 +58,7 @@ async def send_start_message(client: Client, message: Message):
 
         # Tek f-string olarak mesajı gönder
         await message.reply_text(
-            f"Stremio Eklenti Adresin:\n{addon_url}\n"
+            f'<b>Eklenti adresin:</b>\n<code>{addon_url}</code>\n\n'
             f"Bu adresi Stremio > Eklentiler bölümüne ekleyerek kullanabilirsin."
             f"{db_stats_text}",
             quote=True,
