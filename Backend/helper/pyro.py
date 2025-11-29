@@ -144,12 +144,13 @@ async def restart_notification():
 # Bot commands
 commands = [
     BotCommand("start", "🚀 Botu başlat"),
-    BotCommand("set", "🎬 IMDb meta verilerini elle ekleyin"),
-    BotCommand("fixmetadata", "⚙️ Meta Veri'nin boş alanlarını düzeltin"),
-    BotCommand("log", "📄 Günlük dosyasını gönder"),
-    BotCommand("restart", "♻️ Botu yeniden başlat"),
     BotCommand("istatistik", "📊 Bot istatistiklerini görüntüle"),
     BotCommand("cevir", "Filmler ve dizileri Türkçeye çevir"),
+    BotCommand("restart", "♻️ Botu yeniden başlat"),
+    BotCommand("set", "🎬 IMDb meta verilerini elle ekleyin"),
+    BotCommand("log", "📄 Günlük dosyasını gönder"),
+    BotCommand("fixmetadata", "⚙️ Meta Veri'nin boş alanlarını düzeltin"),
+    
 ]
 
 
