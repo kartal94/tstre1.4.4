@@ -38,8 +38,8 @@ async def send_stats(client: Client, message: Message):
             f"Filmler: {movies_count}\n"
             f"Diziler: {series_count}\n"
             f"Depolama: {storage_mb} MB\n\n"
-            f" CPU → {cpu}% | F → {free_disk}GB [{disk_percent}%]\n"
-            f" RAM → {ram}% | UP → {uptime}"
+            f" CPU {cpu}% | Boş Alan {free_disk}GB [{disk_percent}%]\n"
+            f" RAM {ram}% | Çalışma zamanı {uptime}"
         )
         
         await message.reply_text(
