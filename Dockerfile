@@ -13,21 +13,14 @@ RUN apt-get update && \
         git \
         curl \
         ca-certificates \
-        locales \
-        python3-venv && \
+        locales && \
     locale-gen en_US.UTF-8 && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY . .
 
-# virtual environment oluştur ve içinde pip, setuptools, wheel ve googletrans-new'i kur
-RUN python3 -m venv .venv \
-    && . .venv/bin/activate \
-    && pip install --upgrade pip setuptools wheel \
-    && pip install "https://github.com/ssut/py-googletrans/archive/refs/tags/v4.0.0.tar.gz"
-
-# uv ile diğer bağımlılıkları kur
+# uv ile tüm bağımlılıkları kur
 RUN uv sync --locked
 
 # start.sh çalıştırılabilir yap
