@@ -27,18 +27,19 @@ def get_db_urls():
 
 # ------------ DATABASE Bağlantısı ------------
 db_urls = get_db_urls()
-if not db_urls:
-    raise Exception("DATABASE bulunamadı!")
+if not db_urls or len(db_urls) < 2:
+    raise Exception("İkinci DATABASE bulunamadı!")
 
-MONGO_URL = db_urls[0]
+MONGO_URL = db_urls[1]  # Virgülden sonraki ikinci database
 client = MongoClient(MONGO_URL)
-db_name = client.list_database_names()[0]
+
+db_name = client.list_database_names()[0]  # Veya direkt DB adını yazabilirsin
 db = client[db_name]
 
 movie_col = db["movie"]
 series_col = db["tv"]
 
-# ------------ Deep Translator ------------
+# ------------ Deep-Translator Translator ------------
 translator = GoogleTranslator(source='en', target='tr')
 
 # ------------ Güvenli Çeviri Fonksiyonu ------------
@@ -115,7 +116,6 @@ async def process_collection_interactive(collection, name, message, start_msg_id
 # ------------ /cevir Komutu (Interaktif) ------------
 @Client.on_message(filters.command("cevir") & filters.private & CustomFilters.owner)
 async def turkce_icerik(client: Client, message: Message):
-    # Başlatma mesajı
     start_msg = await message.reply_text(
         "🇹🇷 Film ve dizi açıklamaları Türkçeye çevriliyor…\nİlerleme tek mesajda gösterilecektir.",
         parse_mode=enums.ParseMode.MARKDOWN
