@@ -13,7 +13,7 @@ except ImportError:
 async def show_second_db_info(client: Client, message: Message):
     """
     /yedek komutu ile ikinci database'in:
-    - movies koleksiyonundaki kayıt sayısı
+    - movie koleksiyonundaki kayıt sayısı
     - tv koleksiyonundaki kayıt sayısı
     - toplam kullanılan depolama
     bilgilerini gösterir.
@@ -45,7 +45,7 @@ async def show_second_db_info(client: Client, message: Message):
             db = mongo_client[db_name]
 
             # Koleksiyon sayıları
-            movies_count = db["movies"].count_documents({})
+            movies_count = db["movie"].count_documents({})
             tv_count = db["tv"].count_documents({})
 
             # Kullanılan depolama
