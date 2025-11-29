@@ -1,74 +1,109 @@
-import locale
-from typing import Dict
-# LÜTFEN BU SATIRIN KENDİ PROJENİZDEKİ DOĞRU DB BAĞLANTI SINIFINA İŞARET ETTİĞİNDEN EMİN OLUN.
-from Backend.db.database import Database  
+import asyncio
+from datetime import datetime, timedelta
+from Backend.logger import LOGGER
+from Backend.helper.database import DBManager
+from typing import List, Dict, Any, Tuple
 
-# Türkçe formatlama için locale ayarı (Sisteminiz desteklemiyorsa bu satırı silebilirsiniz)
-# try:
-#     locale.setlocale(locale.LC_ALL, 'tr_TR.UTF-8')
-# except locale.Error:
-#     pass
+# Verilerin cache'lenmesi
+_STATS_CACHE: Dict[str, Any] = {}
+_CACHE_EXPIRY: datetime = datetime.min
 
-async def get_db_stats() -> Dict[str, str]:
+
+async def get_db_stats() -> Dict[str, Any]:
     """
-    Tüm aktif depolama veritabanlarından (Storage DB) film ve dizi sayılarını toplar,
-    toplam kullanılan depolama alanını hesaplar ve formatlanmış bir sözlük döndürür.
+    Tüm aktif depolama veritabanlarından genel medya istatistiklerini toplar ve döndürür.
+    Verileri 1 saat boyunca cache'ler.
     """
-    stats = {
-        'total_movies': 0,
-        'total_tv_shows': 0,
-        'total_storage_mb': 0.0
-    }
+    global _STATS_CACHE, _CACHE_EXPIRY
     
-    # Veritabanı bağlantılarını almaya çalışın (Çoklu DB/Bot desteği için)
-    db_instances = []
+    # Cache kontrolü: Eğer veriler güncelse, cache'i döndür.
+    if datetime.now() < _CACHE_EXPIRY:
+        LOGGER.info("Returning DB stats from cache.")
+        return _STATS_CACHE
+
+    LOGGER.info("Starting new DB stats calculation.")
+    
+    # DBManager'dan tüm storage DB proxy'lerini al
+    db_proxies = DBManager.get_all_instances()
+    
+    if not db_proxies:
+        LOGGER.warning("No active storage databases found via DBManager.")
+        return {
+            "movie_count": 0,
+            "tv_show_count": 0,
+            "total_media_count": 0,
+            "database_count": 0,
+            "latest_update": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+            "db_details": []
+        }
+
+    # Tüm DB'ler için asenkron görevler oluştur
+    tasks = [collect_stats_for_db(db_proxy, i + 1) for i, db_proxy in enumerate(db_proxies)]
+    
+    # Görevleri paralel olarak çalıştır ve sonuçları topla
+    results: List[Tuple[int, Dict[str, Any]]] = await asyncio.gather(*tasks)
+
+    # Toplanan istatistikleri birleştir
+    total_movie_count = 0
+    total_tv_show_count = 0
+    db_details = []
+
+    for db_index, stats in results:
+        total_movie_count += stats['movie_count']
+        total_tv_show_count += stats['tv_show_count']
+        db_details.append({
+            "db_index": db_index,
+            "movie_count": stats['movie_count'],
+            "tv_show_count": stats['tv_show_count'],
+            "total_in_db": stats['movie_count'] + stats['tv_show_count'],
+            "db_name": stats['db_name']
+        })
+
+    # Nihai sonucu oluştur
+    final_stats = {
+        "movie_count": total_movie_count,
+        "tv_show_count": total_tv_show_count,
+        "total_media_count": total_movie_count + total_tv_show_count,
+        "database_count": len(db_proxies),
+        "latest_update": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+        "db_details": db_details
+    }
+
+    # Cache'i güncelle
+    _STATS_CACHE = final_stats
+    _CACHE_EXPIRY = datetime.now() + timedelta(hours=1)
+    
+    LOGGER.info("DB stats calculation completed and cached.")
+    return final_stats
+
+
+async def collect_stats_for_db(db_proxy: Any, db_index: int) -> Tuple[int, Dict[str, Any]]:
+    """
+    Belirli bir DB proxy'sinden (storage DB) film ve dizi sayısını sayar.
+    DBManager'daki DBProxy sınıfı, Movie ve TVShow koleksiyonlarına erişim sağlar.
+    """
+    movie_count = 0
+    tv_show_count = 0
+    db_name = f"storage_{db_index} ({db_proxy.name})"
+
     try:
-        # get_all_instances metodu tüm aktif storage DB örneklerini döndürür
-        db_instances = Database.get_all_instances()
-    except AttributeError:
-        # Eğer bu metod yoksa, sadece ana DB'yi deneyin.
-        print("Database.get_all_instances() bulunamadı. Sadece varsayılan DB denenecek.")
-        try:
-            db_instances = [Database.get_instance()]
-        except Exception:
-            pass # Bağlantı hatası durumunda boş liste döner
+        # DBManager.get_all_instances() tarafından sağlanan DBProxy üzerindeki koleksiyonları kullan
+        movie_count = await db_proxy.Movie.count_documents({})
+        tv_show_count = await db_proxy.TVShow.count_documents({})
+        
+        LOGGER.info(f"Stats for {db_name}: Movies={movie_count}, TVShows={tv_show_count}")
+        
     except Exception as e:
-        print(f"Veritabanı örnekleri alınırken beklenmedik hata: {e}")
+        LOGGER.error(f"Error collecting stats for {db_name}: {e}")
+        # Hata durumunda bile diğer DB'lerin istatistiklerini engellememek için 0 döndür
+        pass
 
-    # İstatistikleri toplama döngüsü
-    for db_instance in db_instances:
-        try:
-            # 1. Koleksiyon Sayılarını Çekme
-            movie_count = await db_instance.Movie.count_documents({})
-            tv_count = await db_instance.TVShow.count_documents({})
-            
-            stats['total_movies'] += movie_count
-            stats['total_tv_shows'] += tv_count
-            
-            # 2. Depolama Boyutunu Çekme (dbstats komutu ile)
-            db_stats = await db_instance.client.admin.command('dbstats', db=db_instance.name)
-            
-            storage_size_bytes = db_stats.get('storageSize', 0)
-            
-            # Byte'tan Megabyte'a çevirme
-            stats['total_storage_mb'] += storage_size_bytes / (1024 * 1024)
-            
-        except Exception as e:
-            print(f"'{db_instance.name}' veritabanı istatistikleri çekilirken hata: {e}")
-            continue
-
-    # 3. Verileri Telegram için formatlama
-
-    # Depolama formatı: 123.45 MB
-    stats['formatted_storage'] = f"{stats['total_storage_mb']:.2f} MB"
-    
-    # Sayı formatı: Binlik ayırıcı (Örn: 10.250)
-    # {sayı:,} formatı binlik ayırıcı ekler, sonra Türkçe için virgülü noktaya çeviririz.
-    formatted_movies = f"{stats['total_movies']:,}".replace(",", ".")
-    formatted_tv = f"{stats['total_tv_shows']:,}".replace(",", ".")
-    
-    return {
-        'formatted_movies': formatted_movies,
-        'formatted_tv': formatted_tv,
-        'formatted_storage': stats['formatted_storage']
+    return db_index, {
+        "movie_count": movie_count,
+        "tv_show_count": tv_show_count,
+        "db_name": db_name
     }
+
+# Örnek kullanım (Bu dosyanın doğrudan çalıştırılması amaçlanmamıştır, ancak test amaçlı olabilir)
+if __name__ == '__main__':
+    LOGGER.warning("stats_utils.py'nin bağımsız olarak çalıştırılması beklenmez.")
