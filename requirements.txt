@@ -1,6 +1,6 @@
 aiofiles
 fastapi
-py-googletrans==4.0.0-rc1
+py-googletrans==4.0.0
 httpx
 motor
 parse-torrent-title
