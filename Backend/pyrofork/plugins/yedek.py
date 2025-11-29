@@ -4,38 +4,53 @@ from Backend.helper.custom_filter import CustomFilters
 import os
 from pymongo import MongoClient
 
-# config.py varsa import etmeye çalış
+# config.py varsa DATABASE değişkenini import etmeye çalış
 try:
     from Backend.config import DATABASE as CONFIG_DATABASE
 except ImportError:
     CONFIG_DATABASE = None
 
 @Client.on_message(filters.command('yedek') & filters.private & CustomFilters.owner, group=10)
-async def show_db_usage(client: Client, message: Message):
+async def show_db_storage(client: Client, message: Message):
     """
-    /yedek komutu ile virgülle ayrılmış birden fazla MongoDB database'in depolama kullanımını gösterir.
-    Öncelik: config.py -> environment değişkenleri
+    /yedek komutu ile DATABASE değişkenindeki her MongoDB URL’inin
+    kullandığı toplam depolama alanını yazdırır.
+    Database adı URL’de yoksa ilk database otomatik seçilir.
     """
     try:
         # DATABASE URL’lerini al
         databases = CONFIG_DATABASE or os.environ.get("DATABASE") or os.environ.get("DATABASE_URL")
         if not databases:
-            await message.reply_text("⚠️ MongoDB bağlantısı config dosyasında veya environment değişkenlerinde bulunamadı.")
+            await message.reply_text("⚠️ MongoDB bağlantısı config/env değişkenlerinde bulunamadı.")
             return
 
-        # Virgülle ayır ve boş olanları filtrele
+        # Virgülle ayrılmış URL’leri listele
         mongo_urls = [url.strip() for url in databases.split(",") if url.strip()]
+
+        if not mongo_urls:
+            await message.reply_text("⚠️ Database URL bulunamadı.")
+            return
 
         messages = []
         for i, url in enumerate(mongo_urls, 1):
             try:
                 mongo_client = MongoClient(url)
-                db_name = mongo_client.get_default_database().name
-                db_stats = mongo_client[db_name].command("dbstats")
-                used_storage_mb = db_stats.get("storageSize", 0) / (1024 * 1024)  # byte -> MB
-                messages.append(f"💾 Database {i} ('{db_name}') depolama kullanımı: {used_storage_mb:.2f} MB")
-            except Exception as db_err:
-                messages.append(f"⚠️ Database {i} bağlantı hatası: {db_err}")
+                
+                # URL’de default database yoksa ilk DB’yi al
+                db_names = mongo_client.list_database_names()
+                if not db_names:
+                    messages.append(f"⚠️ Database {i} bağlantı başarılı ama database bulunamadı.")
+                    continue
+                db_name = db_names[0]  # ilk database
+                db = mongo_client[db_name]
+
+                db_stats = db.command("dbstats")
+                used_storage_mb = db_stats.get("storageSize", 0) / (1024 * 1024)
+
+                messages.append(f"💾 Database {i} ('{db_name}') kullanımı: {used_storage_mb:.2f} MB")
+
+            except Exception as e:
+                messages.append(f"⚠️ Database {i} bağlantı hatası: {e}")
 
         await message.reply_text("\n".join(messages), quote=True)
 
