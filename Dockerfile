@@ -5,10 +5,11 @@ ENV PYTHONUNBUFFERED=1
 ENV LANG=en_US.UTF-8
 ENV PATH="/app/.venv/bin:$PATH"
 
+# Temel paketleri yükle
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         build-essential \
-	bash \
+        bash \
         git \
         curl \
         ca-certificates \
@@ -18,7 +19,15 @@ RUN apt-get update && \
 
 WORKDIR /app
 COPY . .
-RUN uv lock
+
+# pip güncelle ve googletrans-new'i direkt GitHub üzerinden kur
+RUN pip install --upgrade pip setuptools wheel
+RUN pip install "https://github.com/lushan88a/google-trans-new/archive/refs/tags/1.1.9.tar.gz"
+
+# uv sync ile diğer bağımlılıkları kur
 RUN uv sync --locked
+
+# Çalıştırılabilir dosya izinleri
 RUN chmod +x start.sh
+
 CMD ["bash", "start.sh"]
