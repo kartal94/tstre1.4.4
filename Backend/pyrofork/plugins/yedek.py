@@ -1,69 +1,62 @@
-from pyrogram import filters, Client
-from pyrogram.types import Message
+from pyrogram import Client, filters, enums
 from Backend.helper.custom_filter import CustomFilters
-import os
+from pyrogram.types import Message
 from pymongo import MongoClient
+import os
 
-try:
-    from Backend.config import DATABASE as CONFIG_DATABASE
-except ImportError:
-    CONFIG_DATABASE = None
+def get_db_urls():
+    db_raw = os.getenv("DATABASE", "")
+    db_urls = [u.strip() for u in db_raw.split(",") if u.strip()]
+    return db_urls
 
-@Client.on_message(filters.command('yedek') & filters.private & CustomFilters.owner, group=10)
-async def show_second_db_info(client: Client, message: Message):
-    """
-    /yedek komutu ile ikinci database'in:
-    - movie koleksiyonundaki kayıt sayısı
-    - tv koleksiyonundaki kayıt sayısı
-    - toplam kullanılan depolama
-    bilgilerini gösterir.
-    """
+def get_db_stats(url):
+    client = MongoClient(url)
+
+    # Database adı URL içinde olmadığı için default db seçiyoruz
+    db_name = client.list_database_names()[0] if client.list_database_names() else None
+    if not db_name:
+        return None
+
+    db = client[db_name]
+
+    # Koleksiyon istatistikleri
+    movies_count = db["movie"].count_documents({})
+    series_count = db["tv"].count_documents({})
+
+    # Depolama bilgisi
+    stats = db.command("dbstats")
+    storage_mb = round(stats["storageSize"] / (1024 * 1024), 2)
+
+    return movies_count, series_count, storage_mb
+
+
+@Client.on_message(filters.command("yedek") & filters.private & CustomFilters.owner)
+async def database_status(_, message: Message):
     try:
-        # DATABASE URL’lerini al
-        databases = CONFIG_DATABASE or os.environ.get("DATABASE") or os.environ.get("DATABASE_URL")
-        if not databases:
-            await message.reply_text("⚠️ MongoDB bağlantısı config/env değişkenlerinde bulunamadı.")
-            return
+        db_urls = get_db_urls()
 
-        # Virgülle ayrılmış URL’leri listele ve sadece ikinciyi al
-        mongo_urls = [url.strip() for url in databases.split(",") if url.strip()]
-        if len(mongo_urls) < 2:
-            await message.reply_text("⚠️ İkinci database URL bulunamadı.")
-            return
+        if not db_urls:
+            return await message.reply_text("⚠️ DATABASE ortam değişkeni bulunamadı.")
 
-        url = mongo_urls[1]  # sadece ikinci database
-        try:
-            mongo_client = MongoClient(url)
+        # Sadece Database 2 istendiği için db_urls[1]
+        if len(db_urls) < 2:
+            return await message.reply_text("⚠️ İki adet DATABASE URL bulunamadı.")
 
-            # Database adı URL’de yoksa ilk DB’yi seç
-            db_names = mongo_client.list_database_names()
-            if not db_names:
-                await message.reply_text("⚠️ Database bağlantısı başarılı ama database bulunamadı.")
-                return
+        stats = get_db_stats(db_urls[1])
 
-            db_name = db_names[0]
-            db = mongo_client[db_name]
+        if not stats:
+            return await message.reply_text("⚠️ Database bilgisi alınamadı.")
 
-            # Koleksiyon sayıları
-            movies_count = db["movie"].count_documents({})
-            tv_count = db["tv"].count_documents({})
+        movies_count, series_count, storage_mb = stats
 
-            # Kullanılan depolama
-            db_stats = db.command("dbstats")
-            used_storage_mb = db_stats.get("storageSize", 0) / (1024 * 1024)
+        text = (
+            f"🎬 Filmler ...... {movies_count:,}\n"
+            f"📺 Diziler ...... {series_count:,}\n"
+            f"💾 Depolama ..... {storage_mb} MB"
+        )
 
-            # Mesajı hazırla
-            msg = (
-                f"Filmler: {movies_count:,}\n"
-                f"Diziler: {tv_count:,}\n"
-                f"Depolama: {used_storage_mb:.2f} MB"
-            )
-
-            await message.reply_text(msg, quote=True)
-
-        except Exception as e:
-            await message.reply_text(f"⚠️ Database bağlantı hatası: {e}")
+        await message.reply_text(text)
 
     except Exception as e:
         await message.reply_text(f"⚠️ Hata: {e}")
-        print(f"Error in /yedek handler: {e}")
+        print(e)
