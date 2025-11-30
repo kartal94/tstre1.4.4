@@ -6,7 +6,7 @@ import os
 import importlib.util
 import tempfile
 
-# ------------ CONFIG/ENV'DEN DEĞİŞKENLERİ ALMA ------------
+# ------------ CONFIG/ENV'DEN ALMA ------------
 CONFIG_PATH = "/home/debian/dfbot/config.env"
 
 def read_config():
@@ -18,15 +18,12 @@ def read_config():
     return config
 
 config = read_config()
-
-# DATABASE URL (virgülle ayrılmış, ikinci URL kullanılacak)
 db_raw = getattr(config, "DATABASE", "") or os.getenv("DATABASE", "")
 db_urls = [u.strip() for u in db_raw.split(",") if u.strip()]
 if len(db_urls) < 2:
     raise Exception("İkinci DATABASE bulunamadı!")
-MONGO_URL = db_urls[1]
 
-# BASE_URL (M3U linkleri için)
+MONGO_URL = db_urls[1]
 BASE_URL = getattr(config, "BASE_URL", "") or os.getenv("BASE_URL", "")
 if not BASE_URL:
     raise Exception("BASE_URL config veya env'de bulunamadı!")
@@ -49,7 +46,7 @@ async def send_m3u(client, message: Message):
         with open(tmp_file_path, "w", encoding="utf-8") as m3u:
             m3u.write("#EXTM3U\n")
 
-            # --- Filmler (Movies grubu) ---
+            # --- Filmler ---
             for movie in db["movie"].find({}):
                 title = movie.get("title", "Unknown Movie")
                 logo = movie.get("poster", "")
@@ -65,21 +62,28 @@ async def send_m3u(client, message: Message):
                     m3u.write(f'#EXTINF:-1 tvg-id="" tvg-name="{name}" tvg-logo="{logo}" group-title="{group}",{name}\n')
                     m3u.write(f"{url}\n")
 
-            # --- Diziler (TV Shows grubu, bölüm bazlı) ---
+            # --- Diziler ---
             for tv in db["tv"].find({}):
                 title = tv.get("title", "Unknown TV")
-                logo = tv.get("poster", "")
                 group = "TV Shows"
-                telegram_files = tv.get("telegram", [])
-                for index, tg in enumerate(telegram_files, start=1):
-                    file_id = tg.get("id")
-                    if not file_id:
-                        continue
-                    season_ep = f"S01 E{index:02d}"
-                    name = f"{title} {season_ep}"
-                    url = f"{BASE_URL}/{file_id}/video.mkv"
-                    m3u.write(f'#EXTINF:-1 tvg-id="" tvg-name="{name}" tvg-logo="{logo}" group-title="{group}",{name}\n')
-                    m3u.write(f"{url}\n")
+                seasons = tv.get("seasons", [])
+                for season in seasons:
+                    season_number = season.get("season_number", 1)
+                    episodes = season.get("episodes", [])
+                    for ep in episodes:
+                        ep_number = ep.get("episode_number", 1)
+                        ep_title = ep.get("title", f"{ep_number}")
+                        logo = ep.get("episode_backdrop") or tv.get("poster", "")
+                        telegram_files = ep.get("telegram", [])
+                        for tg in telegram_files:
+                            quality = tg.get("quality", "Unknown")
+                            file_id = tg.get("id")
+                            if not file_id:
+                                continue
+                            url = f"{BASE_URL}/{file_id}/video.mkv"
+                            name = f"{title} S{season_number:02d}E{ep_number:02d} [{quality}]"
+                            m3u.write(f'#EXTINF:-1 tvg-id="" tvg-name="{name}" tvg-logo="{logo}" group-title="{group}",{name}\n')
+                            m3u.write(f"{url}\n")
 
         await client.send_document(
             chat_id=message.chat.id,
