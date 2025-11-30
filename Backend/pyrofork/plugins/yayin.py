@@ -1,58 +1,114 @@
-# yayin.py
-
+# auto_stremio_bot.py
 import os
-from pyrogram import Client, filters, enums
+import secrets
+from urllib.parse import quote
+from threading import Thread
+
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import StreamingResponse
+from pyrogram import Client, filters
 from pyrogram.types import Message
 from dotenv import load_dotenv
 
-# ---------------- Load Config ----------------
-load_dotenv()  # .env veya config.env dosyasından yükler
+# -------------------- CONFIG --------------------
+load_dotenv()
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+API_ID = int(os.getenv("API_ID", "0"))
+API_HASH = os.getenv("API_HASH")
+BASE_URL = os.getenv("BASE_URL")  # Örn: https://yourdomain.com
+OWNER_ID = int(os.getenv("OWNER_ID", "0"))  # Sadece bu kullanıcı ID dosya alabilir
 
-API_ID = int(os.getenv("API_ID", 0))
-API_HASH = os.getenv("API_HASH", "")
-BOT_TOKEN = os.getenv("BOT_TOKEN", "")
-OWNER_ID = int(os.getenv("OWNER_ID", 0))
-BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
+if not BOT_TOKEN or not API_ID or not API_HASH or not BASE_URL or not OWNER_ID:
+    raise Exception("BOT_TOKEN, API_ID, API_HASH, BASE_URL ve OWNER_ID ayarlanmalı!")
 
-# ----------------- Telegram Bot -----------------
-app_bot = Client("bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+# -------------------- TELEGRAM BOT --------------------
+bot = Client("stremio_bot", bot_token=BOT_TOKEN, api_id=API_ID, api_hash=API_HASH)
 
-# ----------------- Owner Filter -----------------
-from pyrogram.filters import Filter
+# Owner kontrolü
+def is_owner(user_id: int):
+    return user_id == OWNER_ID
 
-class OwnerFilter(Filter):
-    async def __call__(self, client, message: Message):
-        return message.from_user and message.from_user.id == OWNER_ID
+# Otomatik dosya yakalama
+@bot.on_message(filters.private & (filters.document | filters.video))
+async def auto_file_handler(client: Client, message: Message):
+    if not is_owner(message.from_user.id):
+        return  # Owner değilse işlem yapma
 
-OwnerOnly = OwnerFilter()
+    file = message.document or message.video
+    file_id = file.file_id
+    file_name = file.file_name or f"{secrets.token_hex(4)}.mkv"
 
-# ----------------- /yayin Komutu -----------------
-@app_bot.on_message(filters.command("yayin") & filters.private & OwnerOnly)
-async def yayin_handler(client: Client, message: Message):
+    stremio_url = f"{BASE_URL}/dl/{quote(file_id)}/{quote(file_name)}"
+    await message.reply_text(f"✅ Stremio uyumlu link hazır:\n{stremio_url}")
+
+# -------------------- FASTAPI --------------------
+app = FastAPI(title="Telegram Stremio Streaming")
+
+@app.get("/dl/{file_id}/{file_name}")
+async def stream_file(file_id: str, file_name: str, request: Request):
     try:
-        # Mesajda dosya var mı kontrol et
-        file_attr = message.document or message.video or message.audio
-        if not file_attr:
-            await message.reply_text("⚠️ Lütfen bir dosya gönderin.", quote=True)
-            return
+        # Telegram'dan dosya bilgisi al
+        message = await bot.get_messages(chat_id="@me", message_ids=file_id)
+        file = message.document or message.video
+        file_size = file.file_size
 
-        # file_id ve file_name al
-        file_id = file_attr.file_id
-        file_name = file_attr.file_name or "video.mkv"
+        # Range header işlemleri
+        range_header = request.headers.get("Range", "")
+        from_bytes, until_bytes = 0, file_size - 1
+        if range_header.startswith("bytes="):
+            try:
+                from_str, until_str = range_header[6:].split("-")
+                from_bytes = int(from_str) if from_str else 0
+                until_bytes = int(until_str) if until_str else file_size - 1
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid Range header")
 
-        # Stremio tarzı link üret
-        stream_link = f"{BASE_URL}/dl/{file_id}/{file_name}"
+        req_length = until_bytes - from_bytes + 1
 
-        # Owner'a gönder
-        await message.reply_text(
-            f"📤 İşte dosyanın linki:\n<code>{stream_link}</code>",
-            parse_mode=enums.ParseMode.HTML,
-            quote=True
+        # Telegram'dan byte aralığı oku
+        async def file_generator():
+            offset = from_bytes
+            chunk_size = 1024 * 1024
+            while offset <= until_bytes:
+                chunk = await bot.download_media(
+                    file, file_name=None, file_offset=offset,
+                    file_size=min(chunk_size, until_bytes - offset + 1)
+                )
+                yield chunk
+                offset += len(chunk)
+
+        headers = {
+            "Content-Type": file.mime_type or "application/octet-stream",
+            "Content-Length": str(req_length),
+            "Content-Disposition": f'inline; filename="{file_name}"',
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "public, max-age=3600, immutable",
+        }
+        if range_header:
+            headers["Content-Range"] = f"bytes {from_bytes}-{until_bytes}/{file_size}"
+            status_code = 206
+        else:
+            status_code = 200
+
+        return StreamingResponse(
+            content=file_generator(),
+            status_code=status_code,
+            headers=headers,
+            media_type=file.mime_type or "application/octet-stream"
         )
-    except Exception as e:
-        await message.reply_text(f"⚠️ Hata: {e}", quote=True)
-        print("Hata /yayin:", e)
 
-# ----------------- Bot Başlat -----------------
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+# -------------------- BOT START --------------------
 if __name__ == "__main__":
-    app_bot.run()
+    import uvicorn
+
+    # Pyrogram bot'u ayrı thread'de çalıştır
+    def run_bot():
+        bot.run()
+
+    Thread(target=run_bot).start()
+
+    # FastAPI server başlat
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
