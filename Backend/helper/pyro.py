@@ -150,6 +150,7 @@ commands = [
     BotCommand("set", "🎬 IMDb meta verilerini elle ekleyin."),
     BotCommand("log", "📄 Günlük dosyasını gönder."),
     BotCommand("fixmetadata", "⚙️ Meta Veri'nin boş alanlarını düzeltin."),
+    BotCommand("sil", "🗑️ Film ve dizi veritabanını silin.")
     
 ]
 
