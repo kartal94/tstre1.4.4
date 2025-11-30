@@ -17,12 +17,34 @@ router = APIRouter(prefix="/stremio", tags=["Stremio Addon"])
 
 # Define available genres
 GENRES = [
-"Aksiyon", "Macera", "Animasyon", "Biyografi", "Komedi",
-"Suç", "Belgesel", "Dram", "Aile", "Fantastik",
-"Tarih", "Korku", "Müzik", "Gizem", "Romantik",
-"Bilim Kurgu", "Spor", "Gerilim", "Savaş", "Western",
-"Çocuklar", "Haber", "Gerçeklik", "Bilim Kurgu & Fantazi",
-"Pembe Dizi", "Talk", "Savaş & Politik", "Vahşi Batı", "TV film",
+"Aile",
+    "Aksiyon",
+    "Animasyon",
+    "Belgesel",
+    "Biyografi",
+    "Bilim Kurgu",
+    "Bilim Kurgu & Fantazi",
+    "Dram",
+    "Fantastik",
+    "Gerçeklik",
+    "Gerilim",
+    "Gizem",
+    "Haber",
+    "Korku",
+    "Komedi",
+    "Macera",
+    "Müzik",
+    "Pembe Dizi",
+    "Romantik",
+    "Savaş",
+    "Savaş & Politik",
+    "Spor",
+    "Suç",
+    "Talk",
+    "TV film",
+    "Vahşi Batı",
+    "Western",
+    "Çocuklar"
 ]
 
 
