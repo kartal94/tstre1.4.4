@@ -65,19 +65,19 @@ async def send_m3u(client, message: Message):
                     m3u.write(f'#EXTINF:-1 tvg-id="" tvg-name="{name}" tvg-logo="{logo}" group-title="{group}",{name}\n')
                     m3u.write(f"{url}\n")
 
-            # --- Diziler (TV Shows grubu) ---
+            # --- Diziler (TV Shows grubu, bölüm bazlı) ---
             for tv in db["tv"].find({}):
                 title = tv.get("title", "Unknown TV")
                 logo = tv.get("poster", "")
                 group = "TV Shows"
                 telegram_files = tv.get("telegram", [])
-                for tg in telegram_files:
-                    quality = tg.get("quality", "Unknown")
+                for index, tg in enumerate(telegram_files, start=1):
                     file_id = tg.get("id")
                     if not file_id:
                         continue
+                    season_ep = f"S01 E{index:02d}"
+                    name = f"{title} {season_ep}"
                     url = f"{BASE_URL}/{file_id}/video.mkv"
-                    name = f"{title} [{quality}]"
                     m3u.write(f'#EXTINF:-1 tvg-id="" tvg-name="{name}" tvg-logo="{logo}" group-title="{group}",{name}\n')
                     m3u.write(f"{url}\n")
 
