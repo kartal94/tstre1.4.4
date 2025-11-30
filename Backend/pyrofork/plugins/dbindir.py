@@ -1,14 +1,16 @@
-from pyrogram import Client, filters, enums
+from pyrogram import Client, filters
 from pyrogram.types import Message
 from Backend.helper.custom_filter import CustomFilters
 from pymongo import MongoClient
 import os
 import importlib.util
-import subprocess
+import json
 import datetime
+import tempfile
+import os
 
 # ------------ DATABASE Bağlantısı ------------
-CONFIG_PATH = "/home/debian/dfbot/config.env"  # <- dfbot olarak değişti
+CONFIG_PATH = "/home/debian/dfbot/config.env"
 
 def read_database_from_config():
     if not os.path.exists(CONFIG_PATH):
@@ -29,43 +31,42 @@ if len(db_urls) < 2:
     raise Exception("İkinci DATABASE bulunamadı!")
 
 MONGO_URL = db_urls[1]
-client = MongoClient(MONGO_URL)
-db_name = client.list_database_names()[0]
-db = client[db_name]
+client_db = MongoClient(MONGO_URL)
+db_name = client_db.list_database_names()[0]
+db = client_db[db_name]
 
-# ------------ /dbindir Komutu ------------
+# ------------ /dbindir Komutu (Tek JSON Dosya) ------------
 @Client.on_message(filters.command("dbindir") & filters.private & CustomFilters.owner)
-async def download_database(client: Client, message: Message):
+async def download_database(client, message: Message):
     start_msg = await message.reply_text("💾 Database hazırlanıyor, lütfen bekleyin...")
 
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    dump_dir = f"/tmp/db_dump_{timestamp}"
-    archive_path = f"/tmp/db_{timestamp}.zip"
+    tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".json")
+    tmp_file_path = tmp_file.name
+    tmp_file.close()
 
     try:
-        os.makedirs(dump_dir, exist_ok=True)
-        subprocess.run([
-            "mongodump",
-            "--uri", MONGO_URL,
-            "--db", db_name,
-            "--out", dump_dir
-        ], check=True)
+        # Tüm koleksiyonları tek sözlükte birleştir
+        db_data = {}
+        for col_name in db.list_collection_names():
+            db_data[col_name] = list(db[col_name].find({}))
 
-        subprocess.run([
-            "zip", "-r", archive_path, dump_dir
-        ], check=True)
+        # Tek JSON dosyası olarak kaydet
+        with open(tmp_file_path, "w", encoding="utf-8") as f:
+            json.dump(db_data, f, default=str, ensure_ascii=False)
 
+        # Telegram'a gönder
         await client.send_document(
             chat_id=message.chat.id,
-            document=archive_path,
+            document=tmp_file_path,
             caption=f"📂 Veritabanı: {db_name} ({timestamp})"
         )
 
         await start_msg.delete()
+
     except Exception as e:
         await start_msg.edit_text(f"❌ Database indirilemedi.\nHata: {e}")
+
     finally:
-        if os.path.exists(dump_dir):
-            subprocess.run(["rm", "-rf", dump_dir])
-        if os.path.exists(archive_path):
-            os.remove(archive_path)
+        if os.path.exists(tmp_file_path):
+            os.remove(tmp_file_path)
