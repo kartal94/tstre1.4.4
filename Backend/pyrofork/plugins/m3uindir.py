@@ -54,8 +54,8 @@ async def send_m3u_file(client, message: Message):
                 genres = movie.get("genres", [])
 
                 for tg in telegram_files:
-                    file_id = tg.get("id")
-                    name = tg.get("name")  # Dosya adını olduğu gibi al
+                    file_id = tg.get("id")  # DÜZELTİLDİ
+                    name = tg.get("name")   # DÜZELTİLDİ
                     if not file_id or not name:
                         continue
 
@@ -121,4 +121,39 @@ async def send_m3u_file(client, message: Message):
                         telegram_files = ep.get("telegram", [])
 
                         for tg in telegram_files:
-                            file_id = tg.get("id")_
+                            file_id = tg.get("id")  # DÜZELTİLDİ
+                            name = tg.get("name")   # DÜZELTİLDİ
+                            if not file_id or not name:
+                                continue
+
+                            url = f"{BASE_URL}/dl/{file_id}/video.mkv"
+                            file_name_lower = name.lower()
+
+                            # --- Dizi platform kategorisi ---
+                            if "dsnp" in file_name_lower:
+                                group = "Disney Dizileri"
+                            elif "nf" in file_name_lower:
+                                group = "Netflix Dizileri"
+                            elif "exxen" in file_name_lower:
+                                group = "Exxen Dizileri"
+                            elif "tabii" in file_name_lower:
+                                group = "Tabii Dizileri"
+                            elif "hbo" in file_name_lower or "hbomax" in file_name_lower or "blutv" in file_name_lower:
+                                group = "Hbo Dizileri"
+                            else:
+                                group = "Diziler"
+
+                            m3u.write(
+                                f'#EXTINF:-1 tvg-id="" tvg-name="{name}" tvg-logo="{logo}" group-title="{group}",{name}\n'
+                            )
+                            m3u.write(f"{url}\n")
+
+        await client.send_document(
+            chat_id=message.chat.id,
+            document=file_path,
+            caption="📂 filmlervediziler.m3u dosyanız hazır!"
+        )
+        await start_msg.delete()
+
+    except Exception as e:
+        await start_msg.edit_text(f"❌ Dosya oluşturulamadı.\nHata: {e}")
