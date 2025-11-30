@@ -136,6 +136,12 @@ async def send_m3u_file(client, message: Message):
                                 group = "Tabii Dizileri"
                             elif "hbo" in file_name_lower or "hbomax" in file_name_lower or "blutv" in file_name_lower:
                                 group = "Hbo Dizileri"
+                            elif "amzn" in file_name_lower:
+                                group = "Amazon Dizileri"
+                            elif "gain" in file_name_lower:
+                                group = "Gain Dizileri"
+                            elif "tod" in file_name_lower:
+                                group = "Tod Dizileri"
                             else:
                                 group = "Diziler"
 
