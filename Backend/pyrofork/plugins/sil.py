@@ -8,7 +8,7 @@ import time
 import asyncio
 
 # ------------ DATABASE Bağlantısı ------------
-CONFIG_PATH = "/home/debian/tstre1.4.4/config.env"
+CONFIG_PATH = "/home/debian/dfbot/config.env"
 
 def read_database_from_config():
     if not os.path.exists(CONFIG_PATH):
