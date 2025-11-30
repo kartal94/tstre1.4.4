@@ -1,170 +1,55 @@
 import os
-import importlib.util
-import asyncio
-from pyrogram import Client, filters
+from urllib.parse import quote
+from pyrogram import filters
 from pyrogram.types import Message
-from fastapi import FastAPI, Response
-from fastapi.middleware.cors import CORSMiddleware
-from starlette.responses import StreamingResponse
-import uvicorn
 
-# ==========================
-# CONFIG OKUMA
-# ==========================
-CONFIG_PATH = "/home/debian/dfbot/config.env"
+# ================================================================
+# CONFIG YÜKLEME (DFbot ile uyumlu)
+# ================================================================
+OWNER_ID = int(os.getenv("OWNER_ID", "0"))
+BASE_URL = os.getenv("BASE_URL", "")
 
-def load_config():
-    config = {}
-    if os.path.exists(CONFIG_PATH):
-        spec = importlib.util.spec_from_file_location("config", CONFIG_PATH)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-
-        for key in dir(module):
-            if key.isupper():
-                config[key] = getattr(module, key)
-
-    # ENV fallback
-    for key in ["API_ID", "API_HASH", "BOT_TOKEN", "OWNER_ID", "BASE_URL"]:
-        config[key] = config.get(key) or os.getenv(key)
-
-    return config
+AUTO_MODE = False  # /yayin açık/kapalı
 
 
-CFG = load_config()
-OWNER_ID = int(CFG["OWNER_ID"])
-BASE_URL = CFG["BASE_URL"]
-
-
-# ==========================
-# DURUM: Yayın Modu Açık mı?
-# ==========================
-yayin_modu = False
-
-# ==========================
-# PYROGRAM BOT
-# ==========================
-bot = Client(
-    "uplink",
-    api_id=int(CFG["API_ID"]),
-    api_hash=CFG["API_HASH"],
-    bot_token=CFG["BOT_TOKEN"],
-    in_memory=True
-)
-
-# RAM Storage
-ram_storage = {}
-
-
-# ==========================
+# ================================================================
 # /yayin KOMUTU
-# ==========================
-@bot.on_message(filters.command("yayin") & filters.private)
-async def yayin_toggle(_: Client, msg: Message):
-    global yayin_modu
+# ================================================================
+@Client.on_message(filters.command("yayin") & filters.private)
+async def yayin_toggle(client, msg: Message):
+
+    global AUTO_MODE
 
     if msg.from_user.id != OWNER_ID:
-        return await msg.reply("⛔ Bu özellik sadece owner için.")
+        return await msg.reply("⛔ Yetkin yok.")
 
-    yayin_modu = not yayin_modu
+    AUTO_MODE = not AUTO_MODE
 
-    if yayin_modu:
-        return await msg.reply("📡 <b>Yayın modu açıldı!</b>\nDosya gönder → link otomatik gelecek.", quote=True)
+    if AUTO_MODE:
+        return await msg.reply("✅ Yayın modu açıldı.\nDosya gönder, link vereyim.")
     else:
-        return await msg.reply("🛑 <b>Yayın modu kapatıldı.</b>\nArtık dosya gönderince link üretilmeyecek.", quote=True)
+        return await msg.reply("⛔ Yayın modu kapatıldı.")
 
 
-# ==========================
-# DOSYA GELİNCE → Link Üret
-# ==========================
-@bot.on_message(filters.private & (filters.document | filters.video | filters.audio))
-async def file_handler(client: Client, msg: Message):
+# ================================================================
+# DOSYA GELİNCE OTOMATİK LINK ÜRET
+# ================================================================
+@Client.on_message((filters.video | filters.document | filters.audio) & filters.private)
+async def auto_stream(client, msg: Message):
+
     if msg.from_user.id != OWNER_ID:
-        return
+        return await msg.reply("⛔ Yetkin yok.")
 
-    global yayin_modu
-
-    # Yayın modu kapalıysa işlem yapma
-    if not yayin_modu:
-        return
+    if not AUTO_MODE:
+        return await msg.reply("ℹ️ Yayın modu kapalı. Açmak için: /yayin")
 
     file = msg.document or msg.video or msg.audio
+    if not file:
+        return await msg.reply("❌ Dosya alınamadı.")
+
     file_id = file.file_id
-    file_name = file.file_name
+    safe_name = quote(file.file_name or "video.mp4")
 
-    ram_storage[file_id] = {
-        "msg": msg,
-        "size": file.file_size,
-        "name": file_name
-    }
+    url = f"{BASE_URL}/dl/{file_id}/{safe_name}"
 
-    stream_url = f"{BASE_URL}/dl/{file_id}"
-
-    return await msg.reply(
-        f"✔ Yayın Linki Hazır!\n\n"
-        f"📄 <b>{file_name}</b>\n"
-        f"🔗 `{stream_url}`\n"
-        f"⏳ RAM üzerinden stream yapılacak.",
-        quote=True
-    )
-
-
-# ==========================
-# FASTAPI
-# ==========================
-app = FastAPI()
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-@app.get("/dl/{file_id}")
-async def stream_file(file_id: str):
-    if file_id not in ram_storage:
-        return Response("Not Found", status_code=404)
-
-    msg = ram_storage[file_id]["msg"]
-    size = ram_storage[file_id]["size"]
-    filename = ram_storage[file_id]["name"]
-
-    async def iterfile():
-        chunk_size = 1024 * 512  # 512 KB
-        offset = 0
-
-        while offset < size:
-            chunk = await bot.download_media(
-                msg,
-                file_name=None,
-                file_offset=offset,
-                file_size=min(chunk_size, size - offset)
-            )
-            if not chunk:
-                break
-
-            yield chunk
-            offset += len(chunk)
-
-    headers = {
-        "Content-Disposition": f'attachment; filename="{filename}"'
-    }
-
-    return StreamingResponse(iterfile(), headers=headers)
-
-
-# ==========================
-# BOT + API BAŞLAT
-# ==========================
-async def main():
-    await bot.start()
-    print("Bot çalışıyor...")
-
-    config = uvicorn.Config(app, host="0.0.0.0", port=8000, log_level="info")
-    server = uvicorn.Server(config)
-
-    await server.serve()
-
-
-asyncio.run(main())
+    await msg.reply(f"🔗 **Link Hazır:**\n{url}", disable_web_page_preview=True)
