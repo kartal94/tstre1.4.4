@@ -51,6 +51,7 @@ PLATFORM_CATEGORIES = {
 @Client.on_message(filters.command("m3uindir") & filters.private & CustomFilters.owner)
 async def send_m3u_file(client, message: Message):
     start_msg = await message.reply_text("📝 filmlervediziler.m3u dosyası hazırlanıyor, lütfen bekleyin...")
+
     file_path = "filmlervediziler.m3u"
 
     try:
@@ -59,7 +60,7 @@ async def send_m3u_file(client, message: Message):
 
             # --- Filmler ---
             for movie in db["movie"].find({}):
-                name = movie.get("name", "Unknown Movie")
+                title = movie.get("title", "Unknown Movie")
                 logo = movie.get("poster", "")
                 genres = movie.get("genres", [])
                 telegram_files = movie.get("telegram", [])
@@ -70,11 +71,12 @@ async def send_m3u_file(client, message: Message):
                     if not file_id:
                         continue
                     url = f"{BASE_URL}/dl/{file_id}/video.mkv"
+                    name = f"{title} [{quality}]"
 
                     # Önce platform bazlı kategori
                     platform_group = None
                     for key, group_name in PLATFORM_CATEGORIES.items():
-                        if key.lower() in name.lower():
+                        if key.lower() in title.lower():
                             platform_group = group_name
                             break
                     if platform_group:
@@ -92,7 +94,7 @@ async def send_m3u_file(client, message: Message):
 
             # --- Diziler ---
             for tv in db["tv"].find({}):
-                name = tv.get("name", "Unknown TV")
+                title = tv.get("title", "Unknown TV")
                 seasons = tv.get("seasons", [])
                 logo_tv = tv.get("poster", "")
 
@@ -111,20 +113,20 @@ async def send_m3u_file(client, message: Message):
                             if not file_id:
                                 continue
                             url = f"{BASE_URL}/dl/{file_id}/video.mkv"
-                            ep_name = f"{name} S{season_number:02d}E{ep_number:02d} [{quality}]"
+                            name = f"{title} S{season_number:02d}E{ep_number:02d} [{quality}]"
 
                             # Önce platform bazlı kategori
                             platform_group = None
                             for key, group_name in PLATFORM_CATEGORIES.items():
-                                if key.lower() in name.lower():
+                                if key.lower() in title.lower():
                                     platform_group = group_name
                                     break
                             if platform_group:
-                                m3u.write(f'#EXTINF:-1 tvg-id="" tvg-name="{ep_name}" tvg-logo="{logo}" group-title="{platform_group}",{ep_name}\n')
+                                m3u.write(f'#EXTINF:-1 tvg-id="" tvg-name="{name}" tvg-logo="{logo}" group-title="{platform_group}",{name}\n')
                                 m3u.write(f"{url}\n")
 
                             # Ardından tür bazlı kategori
-                            m3u.write(f'#EXTINF:-1 tvg-id="" tvg-name="{ep_name}" tvg-logo="{logo}" group-title="Diziler",{ep_name}\n')
+                            m3u.write(f'#EXTINF:-1 tvg-id="" tvg-name="{name}" tvg-logo="{logo}" group-title="Diziler",{name}\n')
                             m3u.write(f"{url}\n")
 
         await client.send_document(
