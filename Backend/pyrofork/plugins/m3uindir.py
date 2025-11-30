@@ -61,6 +61,7 @@ async def send_m3u_file(client, message: Message):
             # --- Filmler ---
             for movie in db["movie"].find({}):
                 title = movie.get("title", "Unknown Movie")
+                name_field = movie.get("name", title)  # name alanı yoksa title kullan
                 logo = movie.get("poster", "")
                 genres = movie.get("genres", [])
                 telegram_files = movie.get("telegram", [])
@@ -73,28 +74,29 @@ async def send_m3u_file(client, message: Message):
                     url = f"{BASE_URL}/dl/{file_id}/video.mkv"
                     name = f"{title} [{quality}]"
 
-                    # Önce platform bazlı kategori
+                    # Platform bazlı kategori
                     platform_group = None
                     for key, group_name in PLATFORM_CATEGORIES.items():
-                        if key.lower() in title.lower():
+                        if key.lower() in name_field.lower():
                             platform_group = group_name
                             break
                     if platform_group:
                         m3u.write(f'#EXTINF:-1 tvg-id="" tvg-name="{name}" tvg-logo="{logo}" group-title="{platform_group}",{name}\n')
                         m3u.write(f"{url}\n")
 
-                    # Ardından tür bazlı kategori
+                    # Tür bazlı kategori
                     if genres:
                         for genre in genres:
                             m3u.write(f'#EXTINF:-1 tvg-id="" tvg-name="{name}" tvg-logo="{logo}" group-title="{genre} Filmleri",{name}\n')
-                            m3u.write(f"{url}\n")
+                            m3u.write(f"{url}\n')
                     else:
                         m3u.write(f'#EXTINF:-1 tvg-id="" tvg-name="{name}" tvg-logo="{logo}" group-title="Filmler",{name}\n')
-                        m3u.write(f"{url}\n")
+                        m3u.write(f"{url}\n')
 
             # --- Diziler ---
             for tv in db["tv"].find({}):
                 title = tv.get("title", "Unknown TV")
+                name_field = tv.get("name", title)
                 seasons = tv.get("seasons", [])
                 logo_tv = tv.get("poster", "")
 
@@ -115,19 +117,19 @@ async def send_m3u_file(client, message: Message):
                             url = f"{BASE_URL}/dl/{file_id}/video.mkv"
                             name = f"{title} S{season_number:02d}E{ep_number:02d} [{quality}]"
 
-                            # Önce platform bazlı kategori
+                            # Platform bazlı kategori
                             platform_group = None
                             for key, group_name in PLATFORM_CATEGORIES.items():
-                                if key.lower() in title.lower():
+                                if key.lower() in name_field.lower():
                                     platform_group = group_name
                                     break
                             if platform_group:
                                 m3u.write(f'#EXTINF:-1 tvg-id="" tvg-name="{name}" tvg-logo="{logo}" group-title="{platform_group}",{name}\n')
                                 m3u.write(f"{url}\n")
 
-                            # Ardından tür bazlı kategori
+                            # Tür bazlı kategori
                             m3u.write(f'#EXTINF:-1 tvg-id="" tvg-name="{name}" tvg-logo="{logo}" group-title="Diziler",{name}\n')
-                            m3u.write(f"{url}\n")
+                            m3u.write(f"{url}\n')
 
         await client.send_document(
             chat_id=message.chat.id,
