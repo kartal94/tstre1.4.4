@@ -11,7 +11,7 @@ CONFIG_PATH = "/home/debian/dfbot/config.env"
 DOWNLOAD_DIR = "/"
 bot_start_time = time()
 DAILY_FILE = "daily_traffic.json"
-PAGE_SIZE = 30  # 30 günlük sayfa
+PAGE_SIZE = 30  # Her sayfa 30 günlük trafik
 
 # ---------------- JSON Yardımcı ----------------
 def load_json(path):
@@ -38,49 +38,40 @@ def update_daily_traffic():
     daily[today] = {"upload": counters.bytes_sent, "download": counters.bytes_recv}
     save_json(DAILY_FILE, daily)
 
-# ---------------- Sayfa Metni ----------------
-def get_page_text(page_index=0, movies=0, series=0, storage_mb=0):
+# ---------------- Trafik Metni ----------------
+def get_monthly_totals():
+    daily = load_json(DAILY_FILE)
+    now = datetime.utcnow()
+    month_str = now.strftime("%m.%Y")
+    total_up = total_down = 0
+    for date_str, data in daily.items():
+        if date_str.endswith(month_str):
+            total_up += data["upload"]
+            total_down += data["download"]
+    return total_up, total_down, total_up + total_down
+
+def get_daily_page_text(page_index=0):
     daily = load_json(DAILY_FILE)
     dates = sorted(daily.keys(), reverse=True)
-    total_pages = max(1, (len(dates)-1)//PAGE_SIZE + 1)
+    start = (page_index-1)*PAGE_SIZE
+    end = start + PAGE_SIZE
+    page_dates = dates[start:end]
 
-    if page_index == 0:
-        # İlk sayfa: Film/Dizi/Depolama + CPU/RAM/Disk + Süre
-        cpu, ram, free_disk, free_percent, uptime = get_system_status()
-        text = (
-            "⌬ <b>İstatistik</b>\n│\n"
-            f"┠ Filmler: {movies}\n"
-            f"┠ Diziler: {series}\n"
-            f"┖ Depolama: {storage_mb} MB\n\n"
-            f"┟ CPU → {cpu}% | Boş → {free_disk}GB [{free_percent}%]\n"
-            f"┖ RAM → {ram}% | Süre → {uptime}"
-        )
-        return text
-    else:
-        # Sonraki sayfalar: Trafik detayları
-        start = (page_index-1) * PAGE_SIZE
-        end = start + PAGE_SIZE
-        page_dates = dates[start:end]
+    lines = []
+    total_up = total_down = 0
+    for d in page_dates:
+        up = daily[d]["upload"]
+        down = daily[d]["download"]
+        total_up += up
+        total_down += down
+        lines.append(f"┠{d} İndirilen {format_bytes(down)} Yüklenen {format_bytes(up)} Toplam: {format_bytes(up+down)}")
 
-        lines = []
-        total_up = 0
-        total_down = 0
-
-        for d in page_dates:
-            up = daily[d]["upload"]
-            down = daily[d]["download"]
-            total_up += up
-            total_down += down
-            lines.append(f"┠{d} İndirilen {format_bytes(down)} Yüklenen {format_bytes(up)} Toplam: {format_bytes(up+down)}")
-
-        total_line = (
-            f"\n┠Toplam İndirilen: {format_bytes(total_down)}\n"
-            f"┠Toplam Yüklenen: {format_bytes(total_up)}\n"
-            f"┖Toplam Kullanım: {format_bytes(total_up + total_down)}"
-        )
-
-        text = "30 Günlük Trafik:\n" + "\n".join(lines) + total_line
-        return text
+    total_line = (
+        f"\n┠Toplam İndirilen: {format_bytes(total_down)}\n"
+        f"┠Toplam Yüklenen: {format_bytes(total_up)}\n"
+        f"┖Toplam Kullanım: {format_bytes(total_up + total_down)}"
+    )
+    return "\n".join(lines) + total_line
 
 # ---------------- Klavye ----------------
 def get_keyboard(page_index, max_page):
@@ -130,13 +121,33 @@ def get_system_status():
     uptime = f"{h}s{m}d{s}s"
     return cpu, ram, free_disk, free_percent, uptime
 
+# ---------------- Metin Oluştur ----------------
+def get_page_text(page_index=0, movies=0, series=0, storage_mb=0):
+    if page_index == 0:
+        cpu, ram, free_disk, free_percent, uptime = get_system_status()
+        month_up, month_down, month_total = get_monthly_totals()
+        text = (
+            "⌬ <b>İstatistik</b>\n│\n"
+            f"┠ Filmler: {movies}\n"
+            f"┠ Diziler: {series}\n"
+            f"┖ Depolama: {storage_mb} MB\n\n"
+            f"┠ Bu Ay Upload: {format_bytes(month_up)}\n"
+            f"┠ Bu Ay Download: {format_bytes(month_down)}\n"
+            f"┖ Bu Ay Toplam: {format_bytes(month_total)}\n\n"
+            f"┟ CPU → {cpu}% | Boş → {free_disk}GB [{free_percent}%]\n"
+            f"┖ RAM → {ram}% | Süre → {uptime}"
+        )
+        return text
+    else:
+        return "30 Günlük Trafik:\n" + get_daily_page_text(page_index)
+
 # ---------------- /istatistik ----------------
 @Client.on_message(filters.command("istatistik") & filters.private & CustomFilters.owner)
 async def send_statistics(client: Client, message: Message):
     try:
         update_daily_traffic()
         daily = load_json(DAILY_FILE)
-        total_pages = max(1, len(daily)//PAGE_SIZE + 1)
+        total_pages = max(1, (len(daily)-1)//PAGE_SIZE + 1)
 
         db_urls = get_db_urls()
         movies = series = storage_mb = 0
@@ -146,7 +157,6 @@ async def send_statistics(client: Client, message: Message):
         text = get_page_text(0, movies, series, storage_mb)
         keyboard = get_keyboard(0, total_pages)
         await message.reply_text(text, parse_mode=enums.ParseMode.HTML, reply_markup=keyboard)
-
     except Exception as e:
         await message.reply_text(f"⚠️ Hata: {e}")
         print("istatistik hata:", e)
@@ -155,7 +165,7 @@ async def send_statistics(client: Client, message: Message):
 @Client.on_callback_query()
 async def cb(c: Client, q: CallbackQuery):
     daily = load_json(DAILY_FILE)
-    total_pages = max(1, len(daily)//PAGE_SIZE + 1)
+    total_pages = max(1, (len(daily)-1)//PAGE_SIZE + 1)
 
     if q.data.startswith("prev:"):
         page = int(q.data.split(":")[1])
@@ -175,8 +185,10 @@ async def cb(c: Client, q: CallbackQuery):
         movies, series, storage_mb = get_db_stats(db_urls[1])
 
     text = get_page_text(page, movies, series, storage_mb)
-    if page == 0:
-        # Sayfa 0 zaten Film/Dizi/Depolama + CPU/RAM/Disk
+    if page > 0:
+        # Sayfa 1 ve sonrası: CPU/RAM/Disk eklemek istemiyorsan burayı boş bırak
+        pass
+    else:
         cpu, ram, free_disk, free_percent, uptime = get_system_status()
         text += f"\n\n┟ CPU → {cpu}% | Boş → {free_disk}GB [{free_percent}%]\n┖ RAM → {ram}% | Süre → {uptime}"
 
