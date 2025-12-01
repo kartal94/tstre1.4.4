@@ -55,7 +55,7 @@ def get_system_status():
     uptime_sec = int(time() - bot_start_time)
     h, r = divmod(uptime_sec, 3600)
     m, s = divmod(r, 60)
-    uptime = f"{h} saat {m} dakika {s} saniye"
+    uptime = f"{h}s{m}d{s}s"
     return cpu, ram, free_disk, free_percent, uptime
 
 
@@ -146,10 +146,12 @@ async def send_statistics(client: Client, message: Message):
             [[InlineKeyboardButton("📅 30 Gün Detay", callback_data="page_0")]]
         )
 
-        await message.reply_text(main_text, parse_mode=enums.ParseMode.HTML, reply_markup=keyboard, quote=True)
+        sent_message = await message.reply_text(main_text, parse_mode=enums.ParseMode.HTML, reply_markup=keyboard, quote=True)
 
         # Veriyi bot hafızasında saklamak
         client.dailies = daily_list
+        client.message_id = sent_message.message_id
+        client.chat_id = sent_message.chat.id
 
     except Exception as e:
         await message.reply_text(f"⚠️ Hata: {e}")
@@ -181,8 +183,10 @@ async def callback(client: Client, callback_query: CallbackQuery):
         if end < len(daily_list):
             keyboard.append(InlineKeyboardButton("➡️ İleri", callback_data=f"page_{page+1}"))
 
-        await callback_query.message.edit_text(
-            f"📅 <b>Son 30 Gün Detay (Sayfa {page+1}):</b>\n{page_text}",
+        await client.edit_message_text(
+            chat_id=callback_query.message.chat.id,
+            message_id=callback_query.message.message_id,
+            text=f"📅 <b>Son 30 Gün Detay (Sayfa {page+1}):</b>\n{page_text}",
             parse_mode=enums.ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup([keyboard] if keyboard else None)
         )
