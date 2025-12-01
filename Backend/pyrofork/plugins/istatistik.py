@@ -1,5 +1,5 @@
 from pyrogram import Client, filters, enums
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from Backend.helper.custom_filter import CustomFilters
 from pymongo import MongoClient
 from psutil import virtual_memory, cpu_percent, disk_usage, net_io_counters
@@ -14,8 +14,7 @@ DOWNLOAD_DIR = "/"
 bot_start_time = time()
 
 DAILY_FILE = "daily_traffic.json"
-PAGE_SIZE = 30  # 30 günlük sayfa
-
+PAGE_SIZE = 30  # Her sayfa 30 günlük trafik
 
 # ---------------- JSON Yardımcı ----------------
 def load_json(path):
@@ -34,7 +33,6 @@ def format_bytes(b):
     if b >= gb: return f"{b/gb:.2f}GB"
     return f"{b/mb:.2f}MB"
 
-
 # ---------------- Trafik Güncelle ----------------
 def update_daily_traffic():
     today = datetime.utcnow().strftime("%d.%m.%Y")
@@ -42,7 +40,6 @@ def update_daily_traffic():
     daily = load_json(DAILY_FILE)
     daily[today] = {"upload": counters.bytes_sent, "download": counters.bytes_recv}
     save_json(DAILY_FILE, daily)
-
 
 # ---------------- Sayfa Metni ----------------
 def get_page_text(page_index=0):
@@ -71,7 +68,6 @@ def get_page_text(page_index=0):
 
     return "⌬ <b>İstatistik</b>\n\n" + "\n".join(lines) + total_line
 
-
 # ---------------- Klavye ----------------
 def get_keyboard(page_index, max_page):
     row = []
@@ -81,7 +77,6 @@ def get_keyboard(page_index, max_page):
         row.append(InlineKeyboardButton("İleri ▶️", callback_data=f"next:{page_index+1}"))
     row.append(InlineKeyboardButton("❌ İptal", callback_data="cancel"))
     return InlineKeyboardMarkup([row])
-
 
 # ---------------- Config Database Okuma ----------------
 def read_database_from_config():
@@ -105,9 +100,8 @@ def get_db_stats(url):
     movies = db["movie"].count_documents({})
     series = db["tv"].count_documents({})
     stats = db.command("dbstats")
-    storage_mb = round(stats.get("storageSize", 0) / (1024*1024), 2)
+    storage_mb = round(stats.get("storageSize", 0)/(1024*1024),2)
     return movies, series, storage_mb
-
 
 # ---------------- Sistem Durumu ----------------
 def get_system_status():
@@ -121,7 +115,6 @@ def get_system_status():
     m,s = divmod(r,60)
     uptime = f"{h} saat {m} dakika {s} saniye"
     return cpu, ram, free_disk, free_percent, uptime
-
 
 # ---------------- /istatistik ----------------
 @Client.on_message(filters.command("istatistik") & filters.private & CustomFilters.owner)
@@ -147,7 +140,6 @@ async def send_statistics(client: Client, message: Message):
     except Exception as e:
         await message.reply_text(f"⚠️ Hata: {e}")
         print("istatistik hata:", e)
-
 
 # ---------------- Callback ----------------
 @Client.on_callback_query()
