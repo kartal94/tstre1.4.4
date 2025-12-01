@@ -36,7 +36,7 @@ db_name = client_db.list_database_names()[0]
 db = client_db[db_name]
 
 # ------------ /dbindir Komutu (Tek JSON Dosya) ------------
-@Client.on_message(filters.command("dbindir") & filters.private & CustomFilters.owner)
+@Client.on_message(filters.command("vtindir") & filters.private & CustomFilters.owner)
 async def download_database(client, message: Message):
     start_msg = await message.reply_text("💾 Database hazırlanıyor, lütfen bekleyin...")
 
