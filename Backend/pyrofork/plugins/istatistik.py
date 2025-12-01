@@ -4,7 +4,7 @@ from Backend.helper.custom_filter import CustomFilters
 from pymongo import MongoClient
 from psutil import virtual_memory, cpu_percent, disk_usage, net_io_counters
 from time import time
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import json
 import importlib.util
@@ -108,7 +108,15 @@ def update_traffic_stats():
     month_total = month_up + month_down
     total_traffic = total_up + total_down
 
-    # Formatlı değerler
+    # Son 7 günün tarih ve toplam kullanımı
+    last_7_days = []
+    for i in range(7):
+        day = (datetime.utcnow() - timedelta(days=i)).strftime("%Y-%m-%d")
+        u = data.get("daily", {}).get(day, {}).get("upload", 0)
+        d = data.get("daily", {}).get(day, {}).get("download", 0)
+        total = u + d
+        last_7_days.append((day, format_size(total)))
+
     return (
         format_size(daily_up),
         format_size(daily_down),
@@ -118,7 +126,8 @@ def update_traffic_stats():
         format_size(total_down),
         format_size(daily_total),
         format_size(month_total),
-        format_size(total_traffic)
+        format_size(total_traffic),
+        last_7_days
     )
 
 # ---------------- /istatistik Komutu ----------------
@@ -133,7 +142,9 @@ async def send_statistics(client: Client, message: Message):
             movies, series, storage_mb = get_db_stats(db_urls[0])
 
         cpu, ram, free_disk, free_percent, uptime = get_system_status()
-        daily_up, daily_down, month_up, month_down, total_up, total_down, daily_total, month_total, total_traffic = update_traffic_stats()
+        daily_up, daily_down, month_up, month_down, total_up, total_down, daily_total, month_total, total_traffic, last_7_days = update_traffic_stats()
+
+        last_7_text = "\n".join([f"{day}: {total}" for day, total in last_7_days])
 
         text = (
             f"⌬ <b>İstatistik</b>\n"
@@ -141,11 +152,12 @@ async def send_statistics(client: Client, message: Message):
             f"┠ <b>Filmler:</b> {movies}\n"
             f"┠ <b>Diziler:</b> {series}\n"
             f"┖ <b>Depolama:</b> {storage_mb} MB\n\n"
-            f"┠ <b>Bugün:</b> {daily_total}\n"
-            f"┟ <b>Aylık:</b> {month_total}\n"
+            f"┖ <b>Bugün:</b> {daily_total}\n"
+            f"┖ <b>Aylık:</b> {month_total}\n"
             f"┖ <b>Toplam:</b> {total_traffic}\n\n"
             f"┟ <b>CPU</b> → {cpu}% | <b>Boş Disk</b> → {free_disk}GB [{free_percent}%]\n"
-            f"┖ <b>RAM</b> → {ram}% | <b>Süre</b> → {uptime}"
+            f"┖ <b>RAM</b> → {ram}% | <b>Süre</b> → {uptime}\n\n"
+            f"⌬ <b>Son 7 Gün:</b>\n{last_7_text}"
         )
         await message.reply_text(text, parse_mode=enums.ParseMode.HTML, quote=True)
 
