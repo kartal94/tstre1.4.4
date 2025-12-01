@@ -1,4 +1,5 @@
 from pyrogram import Client, filters, enums
+from pyrogram.types import Message
 from Backend.helper.custom_filter import CustomFilters
 from pymongo import MongoClient
 from psutil import virtual_memory, cpu_percent, disk_usage
@@ -9,6 +10,24 @@ import importlib.util
 CONFIG_PATH = "/home/debian/dfbot/config.env"
 DOWNLOAD_DIR = "/"
 bot_start_time = time()
+
+# ---------------- RAM'de Aylık Trafik ----------------
+# Her entry: {"upload": X, "download": Y, "time": timestamp}
+monthly_traffic = []
+
+def log_transfer(file_size_mb, upload=True):
+    """Geçici RAM kaydı, Docker kapandığında silinir"""
+    monthly_traffic.append({
+        "time": int(time()),
+        "upload": file_size_mb if upload else 0,
+        "download": 0 if upload else file_size_mb
+    })
+
+def calculate_monthly_traffic():
+    total_upload = sum(x["upload"] for x in monthly_traffic)
+    total_download = sum(x["download"] for x in monthly_traffic)
+    total = total_upload + total_download
+    return round(total_upload, 2), round(total_download, 2), round(total, 2)
 
 
 # ---------------- Config Database Okuma ----------------
@@ -32,13 +51,11 @@ def get_db_stats(url):
     db_name_list = client.list_database_names()
     if not db_name_list:
         return 0, 0, 0.0
-
     db = client[db_name_list[0]]
     movies = db["movie"].count_documents({})
     series = db["tv"].count_documents({})
     stats = db.command("dbstats")
     storage_mb = round(stats.get("storageSize", 0) / (1024 * 1024), 2)
-
     return movies, series, storage_mb
 
 
@@ -53,22 +70,12 @@ def get_system_status():
     h, r = divmod(uptime_sec, 3600)
     m, s = divmod(r, 60)
     uptime = f"{h}s{m}d{s}s"
-
     return cpu, ram, free_disk, free_percent, uptime
-
-
-# ---------------- Aylık Trafik ----------------
-def get_monthly_traffic():
-    # Örnek veri, kendi DB veya loglardan çekebilirsin
-    upload_mb = 0.19
-    download_mb = 1.33
-    total_mb = round(upload_mb + download_mb, 2)
-    return upload_mb, download_mb, total_mb
 
 
 # ---------------- /istatistik Komutu ----------------
 @Client.on_message(filters.command("istatistik") & filters.private & CustomFilters.owner)
-async def send_statistics(client, message):
+async def send_statistics(client: Client, message: Message):
     try:
         db_urls = get_db_urls()
         movies = series = storage_mb = 0
@@ -76,17 +83,17 @@ async def send_statistics(client, message):
             movies, series, storage_mb = get_db_stats(db_urls[1])
 
         cpu, ram, free_disk, free_percent, uptime = get_system_status()
-        upload_mb, download_mb, total_mb = get_monthly_traffic()
+        upload_mb, download_mb, total_mb = calculate_monthly_traffic()
 
         text = (
             f"⌬ <b>İstatistik</b>\n"
             f"│\n"
-            f"┠ Filmler: {movies}\n"
-            f"┠ Diziler: {series}\n"
-            f"┖ Depolama: {storage_mb} MB\n\n"
-            f"┠ İndirilen: {download_mb}MB\n"
-            f"┠ Yüklenen: {upload_mb}MB\n"
-            f"┖ Toplam: {total_mb}MB\n\n"
+            f"┠ <b>Filmler:</b> {movies}\n"
+            f"┠ <b>Diziler:</b> {series}\n"
+            f"┖ <b>Depolama:</b> {storage_mb} MB\n\n"
+            f"┠ Bu Ay Upload: {upload_mb} MB\n"
+            f"┠ Bu Ay Download: {download_mb} MB\n"
+            f"┖ Bu Ay Toplam: {total_mb} MB\n\n"
             f"┟ CPU → {cpu}% | Boş → {free_disk}GB [{free_percent}%]\n"
             f"┖ RAM → {ram}% | Süre → {uptime}"
         )
@@ -95,3 +102,4 @@ async def send_statistics(client, message):
 
     except Exception as e:
         print("istatistik hata:", e)
+        await message.reply_text(f"⚠️ Hata: {e}")
