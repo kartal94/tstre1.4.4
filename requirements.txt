@@ -11,4 +11,3 @@ tgcrypto
 themoviedb
 uvicorn
 psutil
-apscheduler
