@@ -7,7 +7,7 @@
     <!-- Header -->
     <div class="mb-6 sm:mb-8">
         <div class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-            <a href="/deneme/media/manage?media_type={{ media_type }}" class="text-primary hover:underline flex items-center text-sm sm:text-base">
+            <a href="/media/manage?media_type={{ media_type }}" class="text-primary hover:underline flex items-center text-sm sm:text-base">
                 <svg class="w-4 h-4 sm:w-5 sm:h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
                 </svg>
@@ -362,7 +362,7 @@ async function updateMedia(event) {
     }
     
     try {
-        const response = await fetch(`/deneme/api/media/update?tmdb_id=${tmdbId}&db_index=${dbIndex}&media_type=${mediaType}`, {
+        const response = await fetch(`/api/media/update?tmdb_id=${tmdbId}&db_index=${dbIndex}&media_type=${mediaType}`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json'
@@ -388,7 +388,7 @@ async function deleteQuality(quality) {
     if (!confirm(`${quality} kalitesini silmek istediğinizden emin misiniz?`)) return;
     
     try {
-        const response = await fetch(`/deneme/api/media/delete-quality?tmdb_id=${tmdbId}&db_index=${dbIndex}&quality=${encodeURIComponent(quality)}`, {
+        const response = await fetch(`/api/media/delete-quality?tmdb_id=${tmdbId}&db_index=${dbIndex}&quality=${encodeURIComponent(quality)}`, {
             method: 'DELETE'
         });
         
@@ -410,7 +410,7 @@ async function deleteTVQuality(season, episode, quality) {
     if (!confirm(`${season}.sezon ${episode}.bölüm ${quality} çözünürlüğü silmek istediğinizden emin misiniz?`)) return;
     
     try {
-        const response = await fetch(`/deneme/api/media/delete-tv-quality?tmdb_id=${tmdbId}&db_index=${dbIndex}&season=${season}&episode=${episode}&quality=${encodeURIComponent(quality)}`, {
+        const response = await fetch(`/api/media/delete-tv-quality?tmdb_id=${tmdbId}&db_index=${dbIndex}&season=${season}&episode=${episode}&quality=${encodeURIComponent(quality)}`, {
             method: 'DELETE'
         });
         
@@ -432,7 +432,7 @@ async function deleteTVEpisode(season, episode) {
     if (!confirm(`${season}. sezon ${episode}. bölümü silmek istediğinizden emin misiniz?\n\nBu, bölümün tamamını silecektir.`)) return;
     
     try {
-        const response = await fetch(`/deneme/api/media/delete-tv-episode?tmdb_id=${tmdbId}&db_index=${dbIndex}&season=${season}&episode=${episode}`, {
+        const response = await fetch(`/api/media/delete-tv-episode?tmdb_id=${tmdbId}&db_index=${dbIndex}&season=${season}&episode=${episode}`, {
             method: 'DELETE'
         });
         
@@ -454,7 +454,7 @@ async function deleteTVSeason(season) {
     if (!confirm(`${season} sezonu silmek istediğinizden emin misiniz?\n\nBu işlem, bu sezondaki tüm bölümleri silecektir. Bu işlem geri alınamaz.`)) return;
     
     try {
-        const response = await fetch(`/deneme/api/media/delete-tv-season?tmdb_id=${tmdbId}&db_index=${dbIndex}&season=${season}`, {
+        const response = await fetch(`/api/media/delete-tv-season?tmdb_id=${tmdbId}&db_index=${dbIndex}&season=${season}`, {
             method: 'DELETE'
         });
         
