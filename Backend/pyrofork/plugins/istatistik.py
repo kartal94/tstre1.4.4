@@ -15,7 +15,7 @@ USAGE_FILE = "/tmp/net_usage.json"  # Docker container geçici dosyası
 bot_start_time = time()
 
 
-# ---------------- Config Database Okuma ----------------
+# ---------------- Config Database ----------------
 def read_database_from_config():
     if not os.path.exists(CONFIG_PATH):
         return None
@@ -87,7 +87,7 @@ def update_network_usage():
     today = datetime.utcnow().strftime("%Y-%m-%d")
     usage_data = read_usage_file()
 
-    # Günlük veri ekle
+    # Bugünün verisini ekle
     usage_data[today] = {"uploaded": upload_now, "downloaded": download_now}
 
     # 30 günden eski verileri temizle
@@ -96,17 +96,25 @@ def update_network_usage():
 
     save_usage_file(usage_data)
 
-    # Günlük değer
+    # Günlük değerler
     daily_uploaded = usage_data[today]["uploaded"]
     daily_downloaded = usage_data[today]["downloaded"]
 
-    # 30 günlük toplam
+    # Son 30 gün toplam
     month_uploaded = sum(v["uploaded"] for v in usage_data.values())
     month_downloaded = sum(v["downloaded"] for v in usage_data.values())
 
-    # Toplam (tüm zaman)
-    total_uploaded = sum(v["uploaded"] for v in usage_data.values())
-    total_downloaded = sum(v["downloaded"] for v in usage_data.values())
+    # Toplam (tüm veri)
+    total_uploaded = month_uploaded
+    total_downloaded = month_downloaded
+
+    # 30 günlük detaylı liste
+    daily_list = []
+    for i in range(30):
+        day = datetime.utcnow() - timedelta(days=i)
+        day_str = day.strftime("%Y-%m-%d")
+        data = usage_data.get(day_str, {"uploaded": 0, "downloaded": 0})
+        daily_list.append(f"{day_str}: 📥 {format_size(data['downloaded'])} | 📤 {format_size(data['uploaded'])}")
 
     return (
         format_size(daily_uploaded),
@@ -115,6 +123,7 @@ def update_network_usage():
         format_size(month_downloaded),
         format_size(total_uploaded),
         format_size(total_downloaded),
+        daily_list
     )
 
 
@@ -128,7 +137,9 @@ async def send_statistics(client: Client, message: Message):
             movies, series, storage_mb = get_db_stats(db_urls[1])
 
         cpu, ram, free_disk, free_percent, uptime = get_system_status()
-        daily_uploaded, daily_downloaded, month_uploaded, month_downloaded, total_uploaded, total_downloaded = update_network_usage()
+        daily_uploaded, daily_downloaded, month_uploaded, month_downloaded, total_uploaded, total_downloaded, daily_list = update_network_usage()
+
+        daily_text = "\n".join(daily_list)
 
         text = (
             f"⌬ <b>İstatistik</b>\n"
@@ -141,6 +152,7 @@ async def send_statistics(client: Client, message: Message):
             f"┠ <b>Son 30 Gün Yüklenen:</b> {month_uploaded}\n"
             f"┠ <b>Son 30 Gün İndirilen:</b> {month_downloaded}\n"
             f"┖ <b>Toplam Yüklenen:</b> {total_uploaded} | <b>Toplam İndirilen:</b> {total_downloaded}\n\n"
+            f"📅 <b>Son 30 Gün Detay:</b>\n{daily_text}\n\n"
             f"┟ <b>CPU</b> → {cpu}% | <b>Boş</b> → {free_disk}GB [{free_percent}%]\n"
             f"┖ <b>RAM</b> → {ram}% | <b>Süre</b> → {uptime}"
         )
