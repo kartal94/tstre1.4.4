@@ -157,7 +157,7 @@ async def send_statistics(client: Client, message: Message):
             f"┠ <b>Filmler:</b> {movies}\n"
             f"┠ <b>Diziler:</b> {series}\n"
             f"┖ <b>Depolama:</b> {storage_mb} MB\n\n"
-            f"┠  <b>Bugün:</b> {daily_total}\n"
+            f"┠ <b>Bugün:</b> {daily_total}\n"
             f"┖ <b>Aylık:</b> {month_total}\n\n"
             f"┟ <b>CPU</b> → {cpu}% | <b>Boş</b> → {free_disk}GB [{free_percent}%]\n"
             f"┖ <b>RAM</b> → {ram}% | <b>Süre</b> → {uptime}\n\n"
