@@ -52,7 +52,7 @@ def get_system_status():
     uptime_sec = int(time() - bot_start_time)
     h, r = divmod(uptime_sec, 3600)
     m, s = divmod(r, 60)
-    uptime = f"{h}h {m}m {s}s"
+    uptime = f"{h}s {m}d {s}s"
 
     return cpu, ram, free_disk, free_percent, uptime
 
