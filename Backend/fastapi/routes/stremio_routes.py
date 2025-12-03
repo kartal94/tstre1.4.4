@@ -23,28 +23,20 @@ GENRES = [
     "Belgesel",
     "Biyografi",
     "Bilim Kurgu",
-    "Bilim Kurgu & Fantazi",
     "Dram",
     "Fantastik",
-    "Gerçeklik",
     "Gerilim",
     "Gizem",
-    "Haber",
     "Korku",
     "Komedi",
     "Macera",
     "Müzik",
-    "Pembe Dizi",
     "Romantik",
     "Savaş",
-    "Savaş & Politik",
     "Spor",
     "Suç",
-    "Talk",
-    "TV film",
-    "Vahşi Batı",
-    "Western",
-    "Çocuklar"
+    "TV Filmi",
+    "Vahşi Batı"
 ]
 
 
