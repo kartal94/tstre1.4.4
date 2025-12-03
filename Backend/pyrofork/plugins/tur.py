@@ -55,6 +55,7 @@ async def tur_duzelt(client: Client, message):
         "Bilimkurgu": "Bilim Kurgu",
         "Batılı": "Vahşi Batı",
         "Fantezi": "Fantastik",
+        "Konuşmak": "Talk-Show",
         "romantik": "Romantik"
     }
 
@@ -112,6 +113,7 @@ async def tur_duzelt(client: Client, message):
             f"• Bilimkurgu → Bilim Kurgu\n"
             f"• Batılı → Vahşi Batı\n"
             f"• Fantezi → Fantastik\n"
+            f"• Konuşmak → Talk-Show\n"
             f"• romantik → Romantik",
             parse_mode=enums.ParseMode.MARKDOWN
         )
