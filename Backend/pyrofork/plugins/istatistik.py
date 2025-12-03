@@ -74,11 +74,12 @@ async def send_statistics(client: Client, message: Message):
     try:
         db_urls = get_db_urls()
 
-        if not db_urls:
-            await message.reply_text("⚠️ Veritabanı bulunamadı.")
+        if not db_urls or len(db_urls) < 2:
+            await message.reply_text("⚠️ İkinci veritabanı bulunamadı.")
             return
 
-        total_movies, total_series, storage_mb, storage_percent, genre_stats = get_db_stats_and_genres(db_urls[0])
+        # İkinci MongoDB’den veri çek
+        total_movies, total_series, storage_mb, storage_percent, genre_stats = get_db_stats_and_genres(db_urls[1])
         cpu, ram, free_disk, free_percent, uptime = get_system_status()
 
         # Tür istatistikleri tablo formatında
