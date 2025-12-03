@@ -44,7 +44,7 @@ GENRES = [
     "Reality-TV",
     "Romantik",
     "Savaş",
-    "Savaş ve Politika"
+    "Savaş ve Politika",
     "Spor",
     "Suç",
     "TV Filmi",
