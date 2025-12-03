@@ -52,7 +52,7 @@ async def tur_duzelt(client: Client, message):
     )
 
     genre_map = {
-        "Bilimkurgu": "Bilim kurgu",
+        "Bilimkurgu": "Bilim Kurgu",
         "Batılı": "Vahşi Batı",
         "Fantezi": "Fantastik",
         "romantik": "Romantik"
@@ -109,8 +109,8 @@ async def tur_duzelt(client: Client, message):
             f"✅ *Tür güncellemesi tamamlandı!*\n\n"
             f"Toplam değiştirilen kayıt: *{total_fixed}*\n\n"
             f"📌 Yapılan Dönüşümler:\n"
-            f"• Bilimkurgu → Bilim kurgu\n"
-            f"• batılı → Vahşi Batı\n"
+            f"• Bilimkurgu → Bilim Kurgu\n"
+            f"• Batılı → Vahşi Batı\n"
             f"• Fantezi → Fantastik\n"
             f"• romantik → Romantik",
             parse_mode=enums.ParseMode.MARKDOWN
