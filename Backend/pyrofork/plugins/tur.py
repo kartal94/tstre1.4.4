@@ -76,6 +76,7 @@ async def tur_duzelt(client: Client, message):
         "Kids": "Çocuklar",
         "News": "Haberler",
         "Reality": "Gerçeklik",
+        "Reality-TV": "Gerçeklik",
         "Sci-Fi & Fantasy": "Bilim Kurgu ve Fantazi",
         "Soap": "Pembe Dizi",
         "War & Politics": "Savaş ve Politika",
