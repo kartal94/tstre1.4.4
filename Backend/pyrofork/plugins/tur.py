@@ -53,6 +53,8 @@ async def tur_duzelt(client: Client, message):
 
     genre_map = {
         "Action": "Aksiyon",
+        "Game-Show": "Oyun Gösterisi",
+        "Short": "Kısa",
         "Sci-Fi": "Bilim Kurgu",
         "Sport": "Spor",
         "Adventure": "Macera",
