@@ -52,6 +52,33 @@ async def tur_duzelt(client: Client, message):
     )
 
     genre_map = {
+        "Action": "Aksiyon",
+        "Adventure": "Macera",
+        "Animation": "Animasyon",
+        "Comedy": "Komedi",
+        "Crime": "Suç",
+        "Documentary": "Belgesel",
+        "Drama": "Dram",
+        "Family": "Aile",
+        "Fantasy": "Fantastik",
+        "History": "Tarih",
+        "Horror": "Korku",
+        "Music": "Müzik",
+        "Mystery": "Gizem",
+        "Romance": "Romantik",
+        "Science Fiction": "Bilim Kurgu",
+        "TV Movie": "TV Filmi",
+        "Thriller": "Gerilim",
+        "War": "Savaş",
+        "Western": "Vahşi Batı",
+        "Action & Adventure": "Aksiyon ve Macera",
+        "Kids": "Çocuklar",
+        "News": "Haberler",
+        "Reality": "Gerçeklik",
+        "Sci-Fi & Fantasy": "Bilim Kurgu ve Fantazi",
+        "Soap": "Pembe Dizi",
+        "War & Politics": "Savaş ve Politika",
+        "Talk": "Talk-Show",
         "Bilimkurgu": "Bilim Kurgu",
         "Batılı": "Vahşi Batı",
         "Fantezi": "Fantastik",
@@ -111,12 +138,6 @@ async def tur_duzelt(client: Client, message):
         await start_msg.edit_text(
             f"✅ *Tür güncellemesi tamamlandı!*\n\n"
             f"Toplam değiştirilen kayıt: *{total_fixed}*\n\n"
-            f"📌 Yapılan Dönüşümler:\n"
-            f"• Bilimkurgu → Bilim Kurgu\n"
-            f"• Batılı → Vahşi Batı\n"
-            f"• Fantezi → Fantastik\n"
-            f"• Konuşmak → Talk-Show\n"
-            f"• romantik → Romantik",
             parse_mode=enums.ParseMode.MARKDOWN
         )
     except:
