@@ -1,4 +1,4 @@
-import asyncio
+import asyncio 
 from pyrogram import Client, filters, enums
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from pymongo import MongoClient
@@ -99,13 +99,18 @@ def translate_batch_worker(batch, stop_flag):
     results = []
 
     for doc in batch:
-        if stop_flag.is_set():  # İptal kontrolü
+        if stop_flag.is_set():
             break
+
         _id = doc.get("_id")
         upd = {}
+
+        # Açıklama çevirisi
         desc = doc.get("description")
         if desc:
             upd["description"] = translate_text_safe(desc, CACHE)
+
+        # Sezon / bölüm çevirisi
         seasons = doc.get("seasons")
         if seasons and isinstance(seasons, list):
             modified = False
@@ -122,10 +127,11 @@ def translate_batch_worker(batch, stop_flag):
                         modified = True
             if modified:
                 upd["seasons"] = seasons
-        genres = doc.get("genres")
-        if genres and isinstance(genres, list):
-            upd["genres"] = [translate_text_safe(g, CACHE) for g in genres]
+
+        # ❌ genres artık çevrilmiyor — tamamen kaldırıldı
+
         results.append((_id, upd))
+
     return results
 
 # ------------ Paralel koleksiyon işleyici ------------
@@ -142,10 +148,10 @@ async def process_collection_parallel(collection, name, message):
     idx = 0
 
     workers, batch_size = dynamic_config()
-    pool = ProcessPoolExecutor(max_workers=workers)  # Tek pool
+    pool = ProcessPoolExecutor(max_workers=workers)
 
     while idx < len(ids):
-        if stop_event.is_set():  # Kullanıcı iptal ettiyse döngüyü kır
+        if stop_event.is_set():
             break
 
         batch_ids = ids[idx: idx + batch_size]
@@ -164,7 +170,7 @@ async def process_collection_parallel(collection, name, message):
 
         for _id, upd in results:
             try:
-                if stop_event.is_set():  # Ek kontrol
+                if stop_event.is_set():
                     break
                 if upd:
                     collection.update_one({"_id": _id}, {"$set": upd})
@@ -221,7 +227,7 @@ async def handle_stop(callback_query: CallbackQuery):
 @Client.on_message(filters.command("cevir") & filters.private & CustomFilters.owner)
 async def turkce_icerik(client: Client, message: Message):
     global stop_event
-    stop_event.clear()  # Her yeni işlemde temizle
+    stop_event.clear()
 
     start_msg = await message.reply_text(
         "🇹🇷 Film ve dizi açıklamaları Türkçeye çevriliyor…\nİlerleme tek mesajda gösterilecektir.",
