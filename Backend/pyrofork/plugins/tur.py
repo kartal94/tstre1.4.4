@@ -71,6 +71,7 @@ async def tur_duzelt(client: Client, message):
         "History": "Tarih",
         "Horror": "Korku",
         "Music": "Müzik",
+        "Musical": "Müzikal",
         "Mystery": "Gizem",
         "Romance": "Romantik",
         "Science Fiction": "Bilim Kurgu",
