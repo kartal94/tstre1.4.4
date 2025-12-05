@@ -8,7 +8,7 @@ import os
 import importlib.util
 from collections import defaultdict
 
-CONFIG_PATH = "/home/debian/tstre1.4.4/config.py"
+CONFIG_PATH = "/home/debian/dfbot/config.py"
 DOWNLOAD_DIR = "/"
 bot_start_time = time()
 
