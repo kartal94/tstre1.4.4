@@ -17,39 +17,11 @@ router = APIRouter(prefix="/stremio", tags=["Stremio Addon"])
 
 # Define available genres
 GENRES = [
-"Aile",
-    "Aksiyon",
-    "Aksiyon ve Macera",
-    "Animasyon",
-    "Belgesel",
-    "Bilim Kurgu",
-    "Bilim Kurgu ve Fantazi",
-    "Biyografi",
-    "Çocuklar",
-    "Dram",
-    "Fantastik",
-    "Gerilim",
-    "Gerçeklik",
-    "Gizem",
-    "Haberler",
-    "Kara Film",
-    "Komedi",
-    "Korku",
-    "Kısa",
-    "Macera",
-    "Müzik",
-    "Müzikal",
-    "Oyun Gösterisi",
-    "Pembe Dizi",
-    "Romantik",
-    "Savaş",
-    "Savaş ve Politika",
-    "Spor",
-    "Suç",
-    "TV Filmi",
-    "Talk-Show",
-    "Tarih",
-    "Vahşi Batı"
+    "Aile", "Aksiyon", "Aksiyon ve Macera", "Animasyon", "Belgesel", "Bilim Kurgu",
+    "Bilim Kurgu ve Fantazi", "Biyografi", "Çocuklar", "Dram", "Fantastik", "Gerilim",
+    "Gerçeklik", "Gizem", "Haberler", "Kara Film", "Komedi", "Korku", "Kısa", "Macera",
+    "Müzik", "Müzikal", "Oyun Gösterisi", "Pembe Dizi", "Romantik", "Savaş",
+    "Savaş ve Politika", "Spor", "Suç", "TV Filmi", "Talk-Show", "Tarih", "Vahşi Batı"
 ]
 
 
@@ -57,7 +29,11 @@ GENRES = [
 def convert_to_stremio_meta(item: dict) -> dict:
     media_type = "series" if item.get("media_type") == "tv" else "movie"
     stremio_id = f"{item.get('tmdb_id')}-{item.get('db_index')}"
-    
+
+    # --- Cast ilk 5 kişi sınırı buraya eklendi ---
+    cast_list = item.get("cast") or []
+    cast_list = cast_list[:5] if cast_list else []
+
     meta = {
         "id": stremio_id,
         "type": media_type,
@@ -72,7 +48,7 @@ def convert_to_stremio_meta(item: dict) -> dict:
         "genres": item.get("genres") or [],
         "imdbRating": item.get("rating") or "",
         "description": item.get("description") or "",
-        "cast": item.get("cast") or [],
+        "cast": cast_list,   # ← burada artık 5 kişi
         "runtime": item.get("runtime") or "",
     }
 
@@ -234,7 +210,7 @@ async def get_catalog(media_type: str, id: str, extra: Optional[str] = None):
             else:
                 data = await db.sort_tv_shows(sort_params, page, PAGE_SIZE, genre_filter=genre_filter)
                 items = data.get("tv_shows", [])
-    except Exception as e:
+    except Exception:
         return {"metas": []}
 
     metas = [convert_to_stremio_meta(item) for item in items]
@@ -253,6 +229,10 @@ async def get_meta(media_type: str, id: str):
     if not media:
         return {"meta": {}}
 
+    # --- Cast ilk 5 kişi sınırı burada da eklendi ---
+    cast_list = media.get("cast") or []
+    cast_list = cast_list[:5] if cast_list else []
+
     meta_obj = {
         "id": id,
         "type": "series" if media.get("media_type") == "tv" else "movie",
@@ -267,12 +247,11 @@ async def get_meta(media_type: str, id: str):
         "imdb_id": media.get("imdb_id", ""),
         "releaseInfo": media.get("release_year"),
         "moviedb_id": media.get("tmdb_id", ""),
-        "cast": media.get("cast") or [],
+        "cast": cast_list,    # ← burada da sınırlandı
         "runtime": media.get("runtime") or "",
-
     }
 
-    # --- Add Episodes ---
+    # --- Episodes ---
     if media_type == "series" and "seasons" in media:
 
         yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
