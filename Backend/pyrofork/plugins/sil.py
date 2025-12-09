@@ -1,10 +1,8 @@
 from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from Backend.helper.custom_filter import CustomFilters
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import importlib.util
-import time
 import asyncio
 
 # ------------ DATABASE Bağlantısı ------------
@@ -44,43 +42,19 @@ async def init_db():
 # ------------ /sil Komutu ------------
 @Client.on_message(filters.command("sil") & filters.private & CustomFilters.owner)
 async def delete_all_data(client: Client, message):
-    keyboard = InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton("✅ Evet", callback_data="sil_evet"),
-                InlineKeyboardButton("❌ Hayır", callback_data="sil_hayir")
-            ]
-        ]
+    await init_db()  # DB bağlantısını başlat
+
+    start_msg = await message.reply_text("🗑️ Silme işlemi başlatılıyor...")
+
+    # Koleksiyonları tek seferde sil
+    movie_deleted = await movie_col.count_documents({})
+    series_deleted = await series_col.count_documents({})
+
+    await movie_col.delete_many({})
+    await series_col.delete_many({})
+
+    await start_msg.edit_text(
+        f"✅ Silme işlemi tamamlandı.\n\n"
+        f"📌 Filmler silindi: {movie_deleted}\n"
+        f"📌 Diziler silindi: {series_deleted}"
     )
-    await message.reply_text(
-        "Tüm film ve dizi verileri silinecek.\nOnaylıyor musunuz?",
-        reply_markup=keyboard
-    )
-
-# ------------ Callback Query İşleyici ------------
-@Client.on_callback_query(filters.regex(r"^sil_") & CustomFilters.owner)
-async def confirm_delete_callback(client, callback_query):
-    action = callback_query.data
-
-    if action == "sil_evet":
-        start_msg = await callback_query.message.edit_text("🗑️ Silme işlemi başlatılıyor...")
-
-        # Koleksiyonları tek seferde sil
-        movie_deleted = await movie_col.count_documents({})
-        series_deleted = await series_col.count_documents({})
-
-        await movie_col.delete_many({})
-        await series_col.delete_many({})
-
-        total_time = "00:00:01"  # Çok hızlı olduğu için sabit süre
-        await start_msg.edit_text(
-            f"✅ Silme işlemi tamamlandı.\n\n"
-            f"📌 Filmler silindi: {movie_deleted}\n"
-            f"📌 Diziler silindi: {series_deleted}\n"
-            f"⏱ Toplam süre: {total_time}"
-        )
-
-    elif action == "sil_hayir":
-        await callback_query.message.edit_text("❌ Silme işlemi iptal edildi.")
-
-    await callback_query.answer()
