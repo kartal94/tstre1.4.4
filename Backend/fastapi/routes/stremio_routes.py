@@ -9,7 +9,7 @@ from datetime import datetime, timezone, timedelta
 
 # --- Configuration ---
 BASE_URL = Telegram.BASE_URL
-ADDON_NAME = "Telegram"
+ADDON_NAME = "Arşivim"
 ADDON_VERSION = __version__
 PAGE_SIZE = 15
 
@@ -143,7 +143,7 @@ async def get_manifest():
         "version": ADDON_VERSION,
         "name": ADDON_NAME,
         "logo": "https://i.postimg.cc/XqWnmDXr/Picsart-25-10-09-08-09-45-867.png",
-        "description": "Diziler ve filmler",
+        "description": "Dizi ve film arşivim.",
         "types": ["movie", "series"],
         "resources": ["catalog", "meta", "stream"],
         "catalogs": [
