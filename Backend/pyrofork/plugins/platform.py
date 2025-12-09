@@ -53,14 +53,16 @@ async def platform_duzelt(client: Client, message):
     # telegram.name içindeki anahtar kelimelere göre genres ekleme
     platform_genre_map = {
         "MAX": "Max",
+        "Hbomax": "Max",
         "NF": "Netflix",
-        "DSNP": "Disney+",
-        "BluRay": "BluRay",
-        "WEB-DL": "WEB-DL",
-        "WEBRip": "WEBRip",
-        "HDRip": "HDRip",
+        "DSNP": "Disney",
+        "Tod": "Tod",
+        "Blutv": "Max",
+        "Tv+": "Tv+",
+        "Exxen": "Exxen",
+        "Gain": "Gain",
         "HBO": "HBO",
-        "AMZN": "Amazon Prime",
+        "AMZN": "Amazon",
     }
 
     collections = [
