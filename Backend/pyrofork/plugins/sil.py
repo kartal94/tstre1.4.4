@@ -31,19 +31,13 @@ if len(db_urls) < 2:
 MONGO_URL = db_urls[1]
 client = AsyncIOMotorClient(MONGO_URL)
 db = None  # Async init ile atanacak
-
-async def init_db():
-    global db
-    db_names = await client.list_database_names()
-    db_name = db_names[0]
-    db = client[db_name]
-
-# Koleksiyonlar (init_db sonrası kullanılabilir)
 movie_col = None
 series_col = None
 
-async def init_collections():
-    global movie_col, series_col
+async def init_db():
+    global db, movie_col, series_col
+    db_names = await client.list_database_names()
+    db = client[db_names[0]]
     movie_col = db["movie"]
     series_col = db["tv"]
 
@@ -63,9 +57,9 @@ def format_time(seconds):
     s = seconds % 60
     return f"{h:02d}:{m:02d}:{s:02d}"
 
+# Async delete fonksiyonu
 async def delete_collection_progress(collection, name, message):
-    data = await collection.find({}).to_list(length=None)
-    total = len(data)
+    total = await collection.count_documents({})
     if total == 0:
         return 0
 
@@ -74,10 +68,10 @@ async def delete_collection_progress(collection, name, message):
     last_update = 0
     BATCH_SIZE = 50
 
-    while done < total:
-        batch = data[done:done+BATCH_SIZE]
-        delete_ops = [await collection.delete_one({"_id": row["_id"]}) for row in batch]
-        done += len(batch)
+    cursor = collection.find({})
+    async for doc in cursor:
+        await collection.delete_one({"_id": doc["_id"]})
+        done += 1
 
         current_time = time.time()
         elapsed = current_time - start_time
@@ -90,7 +84,7 @@ async def delete_collection_progress(collection, name, message):
             text = f"{name} siliniyor: {done}/{total}\n{bar}\nKalan: {remaining}\n⏳ ETA: {format_time(eta)}"
             try:
                 await message.edit_text(text)
-            except: 
+            except:
                 pass
             last_update = current_time
 
