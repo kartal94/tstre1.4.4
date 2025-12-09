@@ -1,4 +1,5 @@
 from pyrogram import Client, filters
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from Backend.helper.custom_filter import CustomFilters
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
@@ -39,22 +40,40 @@ async def init_db():
     movie_col = db["movie"]
     series_col = db["tv"]
 
-# ------------ /sil Komutu ------------
+# ------------ /sil Komutu (Onay Kutulu) ------------
 @Client.on_message(filters.command("sil") & filters.private & CustomFilters.owner)
-async def delete_all_data(client: Client, message):
+async def confirm_delete(client: Client, message):
+    keyboard = InlineKeyboardMarkup(
+        [[
+            InlineKeyboardButton("✅ Evet, sil", callback_data="confirm_delete"),
+            InlineKeyboardButton("❌ Hayır", callback_data="cancel_delete")
+        ]]
+    )
+    await message.reply_text(
+        "⚠️ Tüm veriler silinecek! Onaylıyor musunuz?",
+        reply_markup=keyboard
+    )
+
+# ------------ Onay Callback ------------
+@Client.on_callback_query(filters.regex("confirm_delete"))
+async def delete_data(client, callback_query):
+    await callback_query.answer()  # Butona tıklama animasyonu
     await init_db()  # DB bağlantısını başlat
 
-    start_msg = await message.reply_text("🗑️ Silme işlemi başlatılıyor...")
-
-    # Koleksiyonları tek seferde sil
-    movie_deleted = await movie_col.count_documents({})
-    series_deleted = await series_col.count_documents({})
+    movie_count = await movie_col.count_documents({})
+    series_count = await series_col.count_documents({})
 
     await movie_col.delete_many({})
     await series_col.delete_many({})
 
-    await start_msg.edit_text(
+    await callback_query.message.edit_text(
         f"✅ Silme işlemi tamamlandı.\n\n"
-        f"📌 Filmler silindi: {movie_deleted}\n"
-        f"📌 Diziler silindi: {series_deleted}"
+        f"📌 Filmler silindi: {movie_count}\n"
+        f"📌 Diziler silindi: {series_count}"
     )
+
+# ------------ İptal Callback ------------
+@Client.on_callback_query(filters.regex("cancel_delete"))
+async def cancel_delete(client, callback_query):
+    await callback_query.answer("İşlem iptal edildi.", show_alert=True)
+    await callback_query.message.edit_text("❌ Silme işlemi iptal edildi.")
