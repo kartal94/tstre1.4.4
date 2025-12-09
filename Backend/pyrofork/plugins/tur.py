@@ -3,16 +3,13 @@ import time
 from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from Backend.helper.custom_filter import CustomFilters
-from pymongo import MongoClient
+from pymongo import MongoClient, UpdateOne
 import os
 import importlib.util
-import psutil
 
 # -----------------------
-# stop_event ve MongoDB koleksiyonları burada tanımlanacak
 stop_event = asyncio.Event()
 
-# CONFIG
 CONFIG_PATH = "/home/debian/dfbot/config.env"
 
 def read_database_from_config():
@@ -42,56 +39,41 @@ movie_col = db["movie"]
 series_col = db["tv"]
 # -----------------------
 
+# ----- STOP CALLBACK -----
+@Client.on_callback_query(filters.regex("stop"))
+async def stop_callback(client, callback_query):
+    stop_event.set()
+    await callback_query.answer("İşlem iptal edildi!")
+
+# ----- TEK SEFERDE TÜRLER VE PLATFORM -----
 @Client.on_message(filters.command("tur") & filters.private & CustomFilters.owner)
-async def tur_duzelt(client: Client, message):
+async def tur_ve_platform_duzelt(client: Client, message):
     stop_event.clear()
-
+    
     start_msg = await message.reply_text(
-        "🎬 Türler düzenleniyor…\nİlerleme tek mesajda gösterilecektir.",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ İptal Et", callback_data="stop")]])
+        "🔄 Tür ve platform güncellemesi başlatıldı…",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ İptal Et", callback_data="stop")]]),
     )
-
+    
     genre_map = {
-        "Action": "Aksiyon",
-        "Film-Noir": "Kara Film",
-        "Game-Show": "Oyun Gösterisi",
-        "Short": "Kısa",
-        "Sci-Fi": "Bilim Kurgu",
-        "Sport": "Spor",
-        "Adventure": "Macera",
-        "Animation": "Animasyon",
-        "Biography": "Biyografi",
-        "Comedy": "Komedi",
-        "Crime": "Suç",
-        "Documentary": "Belgesel",
-        "Drama": "Dram",
-        "Family": "Aile",
-        "News": "Haberler",
-        "Fantasy": "Fantastik",
-        "History": "Tarih",
-        "Horror": "Korku",
-        "Music": "Müzik",
-        "Musical": "Müzikal",
-        "Mystery": "Gizem",
-        "Romance": "Romantik",
-        "Science Fiction": "Bilim Kurgu",
-        "TV Movie": "TV Filmi",
-        "Thriller": "Gerilim",
-        "War": "Savaş",
-        "Western": "Vahşi Batı",
-        "Action & Adventure": "Aksiyon ve Macera",
-        "Kids": "Çocuklar",
-        "News": "Haberler",
-        "Reality": "Gerçeklik",
-        "Reality-TV": "Gerçeklik",
-        "Sci-Fi & Fantasy": "Bilim Kurgu ve Fantazi",
-        "Soap": "Pembe Dizi",
-        "War & Politics": "Savaş ve Politika",
-        "Bilim-Kurgu": "Bilim Kurgu",
-        "Aksiyon & Macera": "Aksiyon ve Macera",
-        "Savaş & Politik": "Savaş ve Politika",
-        "Bilim Kurgu & Fantazi": "Bilim Kurgu ve Fantazi",     
-        "Talk": "Talk-Show"
+        "Action": "Aksiyon", "Film-Noir": "Kara Film", "Game-Show": "Oyun Gösterisi", "Short": "Kısa",
+        "Sci-Fi": "Bilim Kurgu", "Sport": "Spor", "Adventure": "Macera", "Animation": "Animasyon",
+        "Biography": "Biyografi", "Comedy": "Komedi", "Crime": "Suç", "Documentary": "Belgesel",
+        "Drama": "Dram", "Family": "Aile", "News": "Haberler", "Fantasy": "Fantastik",
+        "History": "Tarih", "Horror": "Korku", "Music": "Müzik", "Musical": "Müzikal",
+        "Mystery": "Gizem", "Romance": "Romantik", "Science Fiction": "Bilim Kurgu",
+        "TV Movie": "TV Filmi", "Thriller": "Gerilim", "War": "Savaş", "Western": "Vahşi Batı",
+        "Action & Adventure": "Aksiyon ve Macera", "Kids": "Çocuklar", "Reality": "Gerçeklik",
+        "Reality-TV": "Gerçeklik", "Sci-Fi & Fantasy": "Bilim Kurgu ve Fantazi", "Soap": "Pembe Dizi",
+        "War & Politics": "Savaş ve Politika", "Bilim-Kurgu": "Bilim Kurgu",
+        "Aksiyon & Macera": "Aksiyon ve Macera", "Savaş & Politik": "Savaş ve Politika",
+        "Bilim Kurgu & Fantazi": "Bilim Kurgu ve Fantazi", "Talk": "Talk-Show"
+    }
+
+    platform_genre_map = {
+        "MAX": "Max", "Hbomax": "Max", "NF": "Netflix", "DSNP": "Disney",
+        "Tod": "Tod", "Blutv": "Max", "Tv+": "Tv+", "Exxen": "Exxen",
+        "Gain": "Gain", "HBO": "Max", "Tabii": "Tabii", "AMZN": "Amazon",
     }
 
     collections = [
@@ -103,19 +85,19 @@ async def tur_duzelt(client: Client, message):
     last_update = 0
 
     for col, name in collections:
-        ids_cursor = col.find({"genres": {"$in": list(genre_map.keys())}}, {"_id": 1, "genres": 1})
-        ids = [d["_id"] for d in ids_cursor]
-        idx = 0
+        # Tüm dökümanlar
+        docs_cursor = col.find({}, {"_id": 1, "genres": 1, "telegram": 1, "seasons": 1})
+        bulk_ops = []
 
-        while idx < len(ids):
+        for doc in docs_cursor:
             if stop_event.is_set():
                 break
 
-            doc_id = ids[idx]
-            doc = col.find_one({"_id": doc_id})
+            doc_id = doc["_id"]
             genres = doc.get("genres", [])
             updated = False
 
+            # --- Tür güncellemesi ---
             new_genres = []
             for g in genres:
                 if g in genre_map:
@@ -123,27 +105,45 @@ async def tur_duzelt(client: Client, message):
                     updated = True
                 else:
                     new_genres.append(g)
+            genres = new_genres
+
+            # --- Platform güncellemesi ---
+            for t in doc.get("telegram", []):
+                name_field = t.get("name", "").lower()
+                for key, genre_name in platform_genre_map.items():
+                    if key.lower() in name_field and genre_name not in genres:
+                        genres.append(genre_name)
+                        updated = True
+
+            for season in doc.get("seasons", []):
+                for ep in season.get("episodes", []):
+                    for t in ep.get("telegram", []):
+                        name_field = t.get("name", "").lower()
+                        for key, genre_name in platform_genre_map.items():
+                            if key.lower() in name_field and genre_name not in genres:
+                                genres.append(genre_name)
+                                updated = True
 
             if updated:
-                col.update_one({"_id": doc_id}, {"$set": {"genres": new_genres}})
+                bulk_ops.append(UpdateOne({"_id": doc_id}, {"$set": {"genres": genres}}))
                 total_fixed += 1
-
-            idx += 1
 
             if time.time() - last_update > 5:
                 try:
                     await start_msg.edit_text(
                         f"{name}: Güncellenen kayıtlar: {total_fixed}",
-                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ İptal Et", callback_data="stop")]])
+                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ İptal Et", callback_data="stop")]]),
                     )
                 except:
                     pass
                 last_update = time.time()
 
+        if bulk_ops:
+            col.bulk_write(bulk_ops)
+
     try:
         await start_msg.edit_text(
-            f"✅ Tür güncellemesi tamamlandı.\n\n"
-            f"Toplam değiştirilen kayıt: {total_fixed}\n\n",
+            f"✅ Tür ve platform güncellemesi tamamlandı.\nToplam değiştirilen kayıt: {total_fixed}",
             parse_mode=enums.ParseMode.MARKDOWN
         )
     except:
