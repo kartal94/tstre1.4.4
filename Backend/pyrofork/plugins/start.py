@@ -7,7 +7,7 @@ from Backend.config import Telegram
 async def send_start_message(client: Client, message: Message):
     try:
         base_url = Telegram.BASE_URL
-        addon_url = f"{base_url}/str/manifest.json"
+        addon_url = f"{base_url}/stremio/manifest.json"
 
         await message.reply_text(
             'Eklentiyi Stremio’ya yüklemek için aşağıdaki adresi kopyalayın ve Eklentiler bölümüne ekleyin.\n\n'
