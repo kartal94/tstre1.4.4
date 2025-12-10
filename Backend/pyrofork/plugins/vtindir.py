@@ -5,7 +5,6 @@ from pymongo import MongoClient
 import os
 import json
 from time import time
-from datetime import datetime
 from dotenv import load_dotenv
 
 CONFIG_PATH = "/home/debian/dfbot/config.env"
@@ -24,15 +23,15 @@ def export_collections_to_json(url):
     client = MongoClient(url)
     db_name_list = client.list_database_names()
     if not db_name_list:
-        return None, None
+        return None
 
     db = client[db_name_list[0]]
-    db_name = db_name_list[0]
 
+    # _id hariç tüm dokümanlar
     movie_data = list(db["movie"].find({}, {"_id": 0}))
     tv_data = list(db["tv"].find({}, {"_id": 0}))
 
-    return {"movie": movie_data, "tv": tv_data}, db_name
+    return {"movie": movie_data, "tv": tv_data}
 
 # ---------------- /vtindir Komutu ----------------
 @Client.on_message(filters.command("vtindir") & filters.private & CustomFilters.owner)
@@ -51,14 +50,13 @@ async def download_collections(client: Client, message: Message):
             await message.reply_text("⚠️ İkinci veritabanı bulunamadı.")
             return
 
-        combined_data, db_name = export_collections_to_json(db_urls[1])
+        combined_data = export_collections_to_json(db_urls[1])
         if combined_data is None:
             await message.reply_text("⚠️ Koleksiyonlar boş veya bulunamadı.")
             return
 
-        # Tarih ve saat ekle
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        file_path = f"/tmp/{db_name}_{timestamp}.json"
+        # Dosya yolu
+        file_path = "/tmp/vt_collections.json"
 
         # JSON yazarken datetime ve diğer serialize edilemeyen tipleri string yap
         with open(file_path, "w", encoding="utf-8") as f:
@@ -68,7 +66,7 @@ async def download_collections(client: Client, message: Message):
         await client.send_document(
             chat_id=message.chat.id,
             document=file_path,
-            caption=f"📁 Movie ve TV Koleksiyonları ({timestamp})"
+            caption="📁 Movie ve TV Koleksiyonları"
         )
 
     except Exception as e:
