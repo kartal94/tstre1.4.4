@@ -1,17 +1,16 @@
 from pyrogram import Client, filters, enums
 from pyrogram.types import Message
-from Backend.helper.custom_filter import CustomFilters # İstenen içe aktarma eklendi
+from Backend.helper.custom_filter import CustomFilters
 from pymongo import MongoClient
 import os
 import importlib.util
 import sys
 
 # ----------------- YAPILANDIRMA VE SABİTLER -----------------
-# Bu yolu kendi yapılandırma dosyanızın konumuna göre güncelleyin.
+# Lütfen bu yolu kendi yapılandırma dosyanızın konumuna göre GÜNCELLEYİN.
 CONFIG_PATH = "/home/debian/dfbot/config.py" 
-# NOT: CustomFilters, Backend/helper/custom_filter.py dosyanızda tanımlı olmalıdır.
 
-# ----------------- DATABASE YÖNETİMİ -----------------
+# ----------------- DATABASE YARDIMCI FONKSİYONLARI -----------------
 
 def read_database_from_config():
     """config.py dosyasından DATABASE URL'sini okur."""
@@ -30,7 +29,6 @@ def read_database_from_config():
 def get_db_urls():
     """Ortam değişkenlerinden veya config dosyasından DB URL'lerini listeler."""
     db_raw = read_database_from_config() or os.getenv("DATABASE") or ""
-    # Birden fazla DB URL'si virgülle ayrılmışsa, hepsini döndür.
     return [u.strip() for u in db_raw.split(",") if u.strip()]
 
 def get_db_client_and_collections(url: str):
@@ -49,19 +47,20 @@ def get_db_client_and_collections(url: str):
         print(f"MongoDB bağlantı hatası: {e}", file=sys.stderr)
         return None, None, None
 
-# ----------------- SİLME İŞLEVİ -----------------
+# ----------------- SİLME İŞLEVİ (VERİ YAPISINA UYGUN) -----------------
 
 def delete_file_from_db(db_url: str, filename: str):
     """
-    Verilen dosya adını veritabanındaki 'movie' ve 'tv' koleksiyonlarında arar.
-    Eşleşen ilk belgeyi siler.
+    Verilen dosya adını, gömülü 'telegram' dizisi içindeki 'name' alanına 
+    bakarak veritabanından siler.
     """
     client, movie_col, tv_col = get_db_client_and_collections(db_url)
     
     if not client:
-        return 0, "Veritabanı bağlantısı kurulamadı (URL: {}).".format(db_url)
+        return 0, "Veritabanı bağlantısı kurulamadı."
 
-    delete_filter = {"file_name": filename}
+    # Gömülü dizi içinde arama yapmak için kullanılan kritik filtre
+    delete_filter = {"telegram.name": filename} 
     
     try:
         # 1. movie koleksiyonunda arama ve silme
@@ -84,13 +83,12 @@ def delete_file_from_db(db_url: str, filename: str):
         return 0, f"Veritabanı silme işlemi sırasında hata oluştu: {e}"
 
 
-# ----------------- TELEGRAM KOMUTU -----------------
+# ----------------- TELEGRAM KOMUT İŞLEYİCİ -----------------
 
 @Client.on_message(filters.command("silinecek") & filters.private & CustomFilters.owner)
 async def delete_file_command(client: Client, message: Message):
     """
-    /silinecek komutunu işler.
-    Örn: /silinecek Ocean's Eight (2018) 1080p MAX WEB-DL [EN-TR] DDP5.1 Atmos H.264-TURG.mkv
+    /silinecek komutunu işler. Bot sahibinin kullanması beklenir.
     """
     try:
         # Komuttan sonra parametre kontrolü
@@ -104,7 +102,7 @@ async def delete_file_command(client: Client, message: Message):
 
         db_urls = get_db_urls()
         
-        # Kodun beklentisi ikinci DB URL'sinin kullanılmasıdır (db_urls[1])
+        # Kod, ikinci veritabanı URL'sinin kullanılmasını bekler (db_urls[1])
         if not db_urls or len(db_urls) < 2:
             await message.reply_text("⚠️ İkinci veritabanı adresi bulunamadı. Lütfen yapılandırmayı kontrol edin.", quote=True)
             return
@@ -125,5 +123,8 @@ async def delete_file_command(client: Client, message: Message):
         await message.reply_text(text, parse_mode=enums.ParseMode.MARKDOWN, quote=True)
 
     except Exception as e:
+        # Hata ayıklama için terminale ve kullanıcıya hata mesajı gönderme
         await message.reply_text(f"⚠️ Dosya silme komutu işlenirken kritik hata oluştu: `{e}`", quote=True, parse_mode=enums.ParseMode.MARKDOWN)
         print("delete_file_command hata:", e, file=sys.stderr)
+
+# NOT: Botu başlatma kodu (Client(...).run()) botunuzun ana dosyasında yer almalıdır.
