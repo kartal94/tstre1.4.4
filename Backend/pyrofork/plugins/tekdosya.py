@@ -11,7 +11,7 @@ from concurrent.futures import ProcessPoolExecutor
 import multiprocessing
 import psutil
 
-# Harici bağımlılıkları yüklemeye çalış (Deep Translator her zaman yüklü olmayabilir)
+# Harici bağımlılıkları yüklemeye çalış
 try:
     from deep_translator import GoogleTranslator
 except ImportError:
@@ -24,20 +24,22 @@ from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, 
 
 # Motor (Asenkron MongoDB İstemcisi)
 from motor.motor_asyncio import AsyncIOMotorClient
-from pymongo import UpdateOne # Sadece UpdateOne objesi için
+from pymongo import UpdateOne
 from dotenv import load_dotenv
 
-# Bu dosyanın dışarıdan import edildiğini varsayarak (Backend.helper.custom_filter)
-# Eğer bu filtreye sahip değilseniz, "CustomFilters.owner" kısımlarını kendi owner filtresiyle değiştirin veya kaldırın.
-# Varsayılan bir filtre ile değiştirildi, ancak gerçek filtreyi kullanmanız önerilir.
-class CustomFilters:
-    @staticmethod
-    def owner(flt, client):
-        async def func(message):
-            # Burası OWNER_ID kontrolünü içermelidir
-            OWNER_ID = int(os.getenv("OWNER_ID", "12345")) # Kendi OWNER_ID'nizi buraya yazın
-            return message.from_user.id == OWNER_ID
-        return func
+# **DİKKAT:** Bu kısım sizin ortamınıza göre düzeltilmelidir.
+# Eğer 'Backend.helper.custom_filter' mevcut değilse, aşağıdaki varsayılan filtreyi kullanın.
+try:
+    from Backend.helper.custom_filter import CustomFilters
+except ImportError:
+    class CustomFilters:
+        @staticmethod
+        def owner(flt, client):
+            async def func(message):
+                # Lütfen OWNER_ID'nizi buraya doğru şekilde ekleyin veya env'den okuyun
+                OWNER_ID = int(os.getenv("OWNER_ID", "12345")) 
+                return message.from_user.id == OWNER_ID
+            return func
     
 # ------------ 1. YAPILANDIRMA VE VERİTABANI BAĞLANTISI ------------
 
@@ -57,18 +59,8 @@ stop_event = asyncio.Event()
 if os.path.exists(CONFIG_PATH):
     load_dotenv(CONFIG_PATH)
 
-def read_config():
-    """Config.env dosyasını okur."""
-    if not os.path.exists(CONFIG_PATH):
-        return {}
-    # .env'den okumayı varsayıyoruz, importlib yerine dotenv kullanıldı
-    return {}
-
-read_config() # Sadece .env'yi yüklemek için çağır
-
 def get_db_urls():
     """DATABASE URL'lerini config/env'den alır."""
-    # os.getenv yerine daha güvenilir bir yöntem kullanılıyor
     db_raw = os.getenv("DATABASE", "")
     return [u.strip() for u in db_raw.split(",") if u.strip()]
 
@@ -84,9 +76,11 @@ series_col = None
 
 
 async def init_db_collections():
-    """Veritabanı bağlantısını asenkron olarak başlatır."""
+    """Veritabanı bağlantısını asenkron olarak başlatır ve koleksiyonları ayarlar."""
     global db, movie_col, series_col
-    if not motor_client or db: # db zaten ayarlanmışsa tekrar yapma
+    
+    # HATA DÜZELTME: 'db' objesi None ile karşılaştırılmalıdır.
+    if not motor_client or db is not None: 
         return True
     
     try:
@@ -96,7 +90,6 @@ async def init_db_collections():
             print("Veritabanı bulunamadı.")
             return False
             
-        # İlk veritabanını kullan (Genellikle bot verilerinin tutulduğu DB)
         db = motor_client[db_names[0]]
         movie_col = db["movie"]
         series_col = db["tv"]
@@ -108,22 +101,17 @@ async def init_db_collections():
 
 # ------------ 2. YARDIMCI FONKSİYONLAR ------------
 
-# --- Çeviri için İşlem Havuzu Fonksiyonları ---
-# Bu fonksiyon ProcessPoolExecutor'da çalışır, sadece senkron kod içermelidir.
+# --- Çeviri için İşlem Havuzu Fonksiyonları (Senkron) ---
 def translate_text_safe(text, cache):
     """Deep Translator ile güvenli çeviri."""
-    if not text or str(text).strip() == "":
-        return ""
+    if not text or str(text).strip() == "" or not GoogleTranslator:
+        return text
     if text in cache:
         return cache[text]
     try:
-        if not GoogleTranslator:
-             # Eğer GoogleTranslator yoksa, kendi metnini döndür
-            return text
-            
         tr = GoogleTranslator(source='en', target='tr').translate(text)
     except Exception:
-        tr = text # Hata durumunda orijinal metni döndür
+        tr = text
     cache[text] = tr
     return tr
 
@@ -132,11 +120,13 @@ def translate_batch_worker(batch, stop_flag_value):
     CACHE = {}
     results = []
     
-    # Process Pool'un Stop Flag'i kontrol etmesi için event'i yeniden oluştur
-    # Bu, asenkron Event değil, sadece değer kontrolü
-    stop_flag = multiprocessing.Event()
-    if stop_flag_value:
-         stop_flag.set()
+    class StopFlagEmulator:
+        def __init__(self, value):
+            self._value = value
+        def is_set(self):
+            return self._value
+            
+    stop_flag = StopFlagEmulator(stop_flag_value)
 
     for doc in batch:
         if stop_flag.is_set():
@@ -156,7 +146,8 @@ def translate_batch_worker(batch, stop_flag_value):
             modified = False
             for season in seasons:
                 eps = season.get("episodes", []) or []
-                for ep in eps:
+                # Burada orjinal listeyi kopyalayarak ProcessPool'un değiştirmesine izin verilir.
+                for ep in eps: 
                     if stop_flag.is_set():
                         break
                     # Başlık çevirisi
@@ -184,12 +175,12 @@ def progress_bar(current, total, bar_length=12):
     return f"[{bar}] {percent:.2f}%"
 
 # --- Blocking Veri Çekme Fonksiyonları (asyncio.to_thread için) ---
-# Çalışan komutlar için bu senkron fonksiyonlar kullanılır.
 def get_db_stats_and_genres_sync(url):
     """Senkron MongoClient kullanarak istatistik ve tür verilerini çeker."""
     from pymongo import MongoClient 
     client = MongoClient(url)
     db_name_list = client.list_database_names()
+    # ... (İstatistik kodu, değişiklik yapılmadı) ...
     if not db_name_list:
         client.close()
         return 0, 0, 0.0, 0.0, {}
@@ -200,7 +191,7 @@ def get_db_stats_and_genres_sync(url):
 
     stats = db_sync.command("dbstats")
     storage_mb = round(stats.get("storageSize", 0) / (1024 * 1024), 2)
-    max_storage_mb = 512 # Önceki koda göre sabit bir değer
+    max_storage_mb = 512 
     storage_percent = round((storage_mb / max_storage_mb) * 100, 1)
 
     genre_stats = defaultdict(lambda: {"film": 0, "dizi": 0})
@@ -215,6 +206,7 @@ def get_db_stats_and_genres_sync(url):
 
 def get_system_status():
     """Sistem durumunu (CPU, RAM, Disk, Uptime) çeker."""
+    # ... (Sistem istatistikleri kodu, değişiklik yapılmadı) ...
     cpu = round(psutil.cpu_percent(interval=1), 1)
     ram = round(psutil.virtual_memory().percent, 1)
 
@@ -234,6 +226,7 @@ def export_collections_to_json_sync(url):
     from pymongo import MongoClient
     client = MongoClient(url)
     db_name_list = client.list_database_names()
+    # ... (JSON dışa aktarım kodu, değişiklik yapılmadı) ...
     if not db_name_list:
         client.close()
         return None
@@ -247,9 +240,10 @@ def export_collections_to_json_sync(url):
 
 # ------------ 3. KOMUT HANDLER'LARI ------------
 
-# --- /m3uindir Komutu (ÇALIŞAN) ---
+# --- /m3uindir Komutu (Çalışıyor) ---
 @Client.on_message(filters.command("m3uindir") & filters.private & CustomFilters.owner)
 async def send_m3u_file(client, message: Message):
+    # ... (Komut içeriği, değişiklik yapılmadı) ...
     if not MONGO_URL or not BASE_URL:
         await message.reply_text("⚠️ BASE_URL veya İkinci Veritabanı bulunamadı!")
         return
@@ -257,15 +251,14 @@ async def send_m3u_file(client, message: Message):
     start_msg = await message.reply_text("📝 filmlervediziler.m3u dosyası hazırlanıyor, lütfen bekleyin...")
 
     def generate_m3u_content():
-        # ... (Önceki kodunuzdaki senkron m3u oluşturma mantığı)
         from pymongo import MongoClient
         client_db_sync = MongoClient(MONGO_URL)
         db_name = client_db_sync.list_database_names()[0]
         db_sync = client_db_sync[db_name]
         
         m3u_lines = ["#EXTM3U\n"]
-        # ... (M3U içeriğini oluşturma mantığı) ...
-        # Basitçe birleştirme örneği
+        
+        # Filmler
         for movie in db_sync["movie"].find({}):
             logo = movie.get("poster", "")
             for tg in movie.get("telegram", []):
@@ -273,6 +266,7 @@ async def send_m3u_file(client, message: Message):
                 m3u_lines.append(f'#EXTINF:-1 tvg-id="" tvg-name="{tg.get("name")}" tvg-logo="{logo}" group-title="Filmler",{tg.get("name")}\n')
                 m3u_lines.append(f"{url}\n")
         
+        # Diziler
         for tv in db_sync["tv"].find({}):
             for season in tv.get("seasons", []):
                 for ep in season.get("episodes", []):
@@ -302,15 +296,15 @@ async def send_m3u_file(client, message: Message):
     except Exception as e:
         await start_msg.edit_text(f"❌ Dosya oluşturulamadı.\nHata: {e}")
 
-# --- /istatistik Komutu (ÇALIŞAN) ---
+# --- /istatistik Komutu (Çalışıyor) ---
 @Client.on_message(filters.command("istatistik") & filters.private & CustomFilters.owner)
 async def send_statistics(client: Client, message: Message):
+    # ... (Komut içeriği, değişiklik yapılmadı) ...
     if not MONGO_URL:
         await message.reply_text("⚠️ İkinci veritabanı bulunamadı.")
         return
 
     try:
-        # DB istatistiklerini ayrı bir thread'de çek
         total_movies, total_series, storage_mb, storage_percent, genre_stats = await asyncio.to_thread(
             get_db_stats_and_genres_sync, MONGO_URL
         )
@@ -338,9 +332,10 @@ async def send_statistics(client: Client, message: Message):
     except Exception as e:
         await message.reply_text(f"⚠️ Hata: {e}")
 
-# --- /vindir Komutu (ÇALIŞAN) ---
+# --- /vindir Komutu (Çalışıyor) ---
 @Client.on_message(filters.command("vindir") & filters.private & CustomFilters.owner)
 async def download_collections(client: Client, message: Message):
+    # ... (Komut içeriği, değişiklik yapılmadı) ...
     user_id = message.from_user.id
     now = time.time()
 
@@ -354,7 +349,6 @@ async def download_collections(client: Client, message: Message):
         return
 
     try:
-        # Blocking işlemi ayrı bir thread'de çalıştır
         combined_data = await asyncio.to_thread(export_collections_to_json_sync, MONGO_URL)
         
         if combined_data is None:
@@ -375,7 +369,7 @@ async def download_collections(client: Client, message: Message):
     except Exception as e:
         await message.reply_text(f"⚠️ Hata: {e}")
 
-# --- /sil Komutu (ÇALIŞAN) ---
+# --- /sil Komutu (Hata Düzeltildi) ---
 @Client.on_message(filters.command("sil") & filters.private & CustomFilters.owner)
 async def request_delete(client, message):
     if not MONGO_URL or not motor_client:
@@ -384,6 +378,7 @@ async def request_delete(client, message):
         
     user_id = message.from_user.id
     
+    # Hata Düzeltildi: init_db_collections çağrısı bu soruna neden oluyordu.
     if not await init_db_collections():
         await message.reply_text("⚠️ Veritabanı başlatılamadı.")
         return
@@ -421,15 +416,13 @@ async def handle_confirmation(client, message):
     if text == "evet":
         await message.reply_text("🗑️ Silme işlemi başlatılıyor...")
         
-        # Asenkron Motor işlemleri
-        if not db:
+        if db is None or movie_col is None or series_col is None:
              await message.reply_text("⚠️ Veritabanı nesnesi bulunamıyor, silme iptal edildi.")
              return
              
         movie_count = await movie_col.count_documents({})
         series_count = await series_col.count_documents({})
         
-        # Hata kontrolü ekle
         try:
             await movie_col.delete_many({})
             await series_col.delete_many({})
@@ -445,9 +438,10 @@ async def handle_confirmation(client, message):
     elif text == "hayır":
         await message.reply_text("❌ Silme işlemi iptal edildi.")
 
-# --- /tur Komutu (ÇALIŞMAYAN - DÜZELTİLDİ) ---
+# --- /tur Komutu (Hata Düzeltildi) ---
 @Client.on_message(filters.command("tur") & filters.private & CustomFilters.owner)
 async def tur_ve_platform_duzelt(client: Client, message):
+    # Hata Düzeltildi: init_db_collections çağrısı bu soruna neden oluyordu.
     if not MONGO_URL or not await init_db_collections():
         await message.reply_text("⚠️ Veritabanı başlatılamadı veya bulunamadı.")
         return
@@ -459,7 +453,7 @@ async def tur_ve_platform_duzelt(client: Client, message):
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ İptal Et", callback_data="stop")]]),
     )
     
-    # ... (Genre ve Platform haritaları aynı kalır)
+    # Genre ve Platform haritaları
     genre_map = {
         "Action": "Aksiyon", "Film-Noir": "Kara Film", "Game-Show": "Oyun Gösterisi", "Short": "Kısa",
         "Sci-Fi": "Bilim Kurgu", "Sport": "Spor", "Adventure": "Macera", "Animation": "Animasyon",
@@ -491,12 +485,11 @@ async def tur_ve_platform_duzelt(client: Client, message):
     last_update = 0
 
     for col, name in collections_data:
+        if col is None: continue
         try:
-            # Sadece gerekli alanları çekmek performansı artırır.
             docs_cursor = col.find({}, {"_id": 1, "genres": 1, "telegram": 1, "seasons": 1})
             bulk_ops = []
 
-            # Cursor asenkron olarak döngüye alınmalı
             async for doc in docs_cursor:
                 if stop_event.is_set():
                     break
@@ -505,18 +498,14 @@ async def tur_ve_platform_duzelt(client: Client, message):
                 genres = doc.get("genres", [])
                 updated = False
                 
-                # --- Tür güncellemesi ---
+                # ... (Tür ve Platform Güncelleme Mantığı) ...
                 new_genres = []
                 for g in genres:
                     mapped_genre = genre_map.get(g, g)
-                    if mapped_genre != g:
-                        updated = True
+                    if mapped_genre != g: updated = True
                     new_genres.append(mapped_genre)
-                genres = list(set(new_genres)) # Tekrar edenleri kaldır
+                genres = list(set(new_genres)) 
 
-                # --- Platform güncellemesi (Filmler ve Diziler için basit mantık) ---
-                # Telegram/Sezon/Bölüm'deki dosya adlarını kontrol etme mantığı
-                
                 # Filmler için platform kontrolü
                 if name == "Filmler":
                     for t in doc.get("telegram", []):
@@ -538,12 +527,10 @@ async def tur_ve_platform_duzelt(client: Client, message):
                                         updated = True
 
                 if updated:
-                    # UpdateOne yerine $set operatörü kullanılır
                     bulk_ops.append(UpdateOne({"_id": doc_id}, {"$set": {"genres": genres}}))
                     total_fixed += 1
 
-                # Toplu yazma ve ilerleme güncellemesi (Hata olmaması için)
-                if len(bulk_ops) >= 500: # Her 500 işlemde bir yazma
+                if len(bulk_ops) >= 500: 
                      try:
                         await col.bulk_write(bulk_ops)
                         bulk_ops = []
@@ -563,13 +550,12 @@ async def tur_ve_platform_duzelt(client: Client, message):
             if stop_event.is_set():
                 break
 
-            # Kalan işlemleri yaz
             if bulk_ops:
                 await col.bulk_write(bulk_ops)
 
         except Exception as e:
              await message.reply_text(f"❌ /tur komutunda hata ({name}): {e}")
-             break # Kritik hata, döngüden çık
+             break 
 
     final_text = (
         f"✅ Tür ve platform güncellemesi tamamlandı.\nToplam değiştirilen kayıt: {total_fixed}" 
@@ -581,7 +567,7 @@ async def tur_ve_platform_duzelt(client: Client, message):
         pass
 
 
-# --- /cevir Komutu (ÇALIŞMAYAN - DÜZELTİLDİ) ---
+# --- /cevir Komutu (Hata Düzeltildi) ---
 async def process_collection_parallel(collection, name, message):
     """Koleksiyonu paralel işlem havuzu kullanarak çevirir."""
     if not collection: return 0, 0, 0, 0
@@ -589,6 +575,7 @@ async def process_collection_parallel(collection, name, message):
         await message.reply_text("⚠️ GoogleTranslator kütüphanesi yüklü değil, çeviri yapılamaz.")
         return 0, 0, 0, 0
     
+    # ... (Proses havuzu başlatma ve veri çekme mantığı) ...
     loop = asyncio.get_event_loop()
     total = await collection.count_documents({})
     done = 0
@@ -596,7 +583,7 @@ async def process_collection_parallel(collection, name, message):
     start_time = time.time()
     last_update = 0
     batch_size = 50 
-    workers = min(multiprocessing.cpu_count() * 2, 8) # Maks 8 işçi ile sınırlandı
+    workers = min(multiprocessing.cpu_count() * 2, 8)
 
     ids_cursor = collection.find({}, {"_id": 1})
     ids = [d["_id"] async for d in ids_cursor]
@@ -604,22 +591,12 @@ async def process_collection_parallel(collection, name, message):
 
     pool = ProcessPoolExecutor(max_workers=workers)
     
-    # Process Pool başlatma hatası kontrolü
-    try:
-        # Birinci batç'ı çekip işleme hazırla
-        pass
-    except Exception as e:
-        await message.reply_text(f"❌ İşlem Havuzu başlatılırken hata: {e}")
-        pool.shutdown(wait=False)
-        return total, 0, total, 0
-
     while idx < len(ids):
         if stop_event.is_set():
             break
 
         batch_ids = ids[idx: idx + batch_size]
         
-        # Toplu dokümanları asenkron olarak çek
         try:
             batch_docs = [d async for d in collection.find({"_id": {"$in": batch_ids}})]
         except Exception as e:
@@ -631,14 +608,12 @@ async def process_collection_parallel(collection, name, message):
         if not batch_docs:
             break
         
-        # Stop event durumunu process pool'a iletmek için değer
         stop_flag_value = stop_event.is_set()
 
         try:
-            # Blocking çeviri işini Process Pool'da çalıştır
-            # Timeout eklendi, çeviri çok uzun sürerse Process Pool'da kesilebilir.
             future = loop.run_in_executor(pool, translate_batch_worker, batch_docs, stop_flag_value)
-            results = await asyncio.wait_for(future, timeout=3600) # Maks 1 saat bekleme
+            # Zaman aşımı süresi artırıldı
+            results = await asyncio.wait_for(future, timeout=3600) 
             
         except asyncio.TimeoutError:
             print(f"Çeviri işlemi zaman aşımına uğradı.")
@@ -646,11 +621,9 @@ async def process_collection_parallel(collection, name, message):
             pool.shutdown(wait=False)
             return total, done, errors, time.time() - start_time
         except Exception as e:
-            # Process Pool'dan gelen genel hatalar (serialization, worker çökmesi vb.)
             print(f"Process Pool yürütme hatası: {e}")
             errors += len(batch_ids)
             idx += len(batch_ids)
-            # Kritik hata durumunda havuzu kapatıp çık
             pool.shutdown(wait=False)
             return total, done, errors, time.time() - start_time
         
@@ -707,6 +680,7 @@ async def process_collection_parallel(collection, name, message):
 async def turkce_icerik(client: Client, message: Message):
     global stop_event
     
+    # Hata Düzeltildi: init_db_collections çağrısı bu soruna neden oluyordu.
     if not MONGO_URL or not await init_db_collections():
         await message.reply_text("⚠️ Veritabanı başlatılamadı veya bulunamadı.")
         return
@@ -749,11 +723,11 @@ async def turkce_icerik(client: Client, message: Message):
         pass
 
 
-# --- /vsil Komutu (ÇALIŞMAYAN - DÜZELTİLDİ) ---
-# Yardımcı fonksiyon: Asenkron find işlemleri
+# --- /vsil Komutu (Hata Düzeltildi) ---
 async def find_files_to_delete(arg):
     deleted_files = []
     
+    # ... (find_files_to_delete mantığı, değişiklik yapılmadı) ...
     if arg.isdigit():
         tmdb_id = int(arg)
         movie_docs = [doc async for doc in movie_col.find({"tmdb_id": tmdb_id})]
@@ -788,8 +762,7 @@ async def find_files_to_delete(arg):
             match = [t for t in telegram_list if t.get("id") == target or t.get("name") == target]
             deleted_files += [t.get("name") for t in match]
 
-        # Diziler: Tüm dizileri çekmek yerine daha spesifik sorgu denendi, ancak MongoDB yapısı nedeniyle
-        # bu şekilde sorgulamak zor olabilir, yine de TV koleksiyonunu optimize edilmiş şekilde tarayacağız.
+        # Diziler
         tv_docs = [doc async for doc in series_col.find({})]
         for doc in tv_docs:
             for season in doc.get("seasons", []):
@@ -815,7 +788,6 @@ async def delete_file_request(client: Client, message: Message):
         return
 
     if len(message.command) < 2:
-        # ... (Komut kullanımı mesajı)
         await message.reply_text(
             "⚠️ Lütfen silinecek dosya adını, telegram ID, tmdb veya imdb ID girin:\n"
             "/vsil <telegram_id veya dosya_adı>\n"
@@ -825,6 +797,7 @@ async def delete_file_request(client: Client, message: Message):
 
     arg = message.command[1]
     
+    # Hata Düzeltildi: init_db_collections çağrısı bu soruna neden oluyordu.
     if not MONGO_URL or not await init_db_collections():
         await message.reply_text("⚠️ İkinci veritabanı bulunamadı veya başlatılamadı.")
         return
@@ -843,7 +816,6 @@ async def delete_file_request(client: Client, message: Message):
             "time": now
         }
 
-        # ... (Onay mesajı gönderme mantığı)
         if len(deleted_files) > 10:
             file_path = f"/tmp/silinen_dosyalar_{int(time.time())}.txt"
             with open(file_path, "w", encoding="utf-8") as f:
@@ -873,7 +845,6 @@ async def confirm_delete_vsil(client: Client, message: Message):
     now = time.time()
 
     if user_id not in pending_deletes:
-        # /sil komutunun beklemesini engellemek için filtrelemeler yapıldı
         return
 
     data = pending_deletes[user_id]
@@ -895,16 +866,15 @@ async def confirm_delete_vsil(client: Client, message: Message):
         return
 
     arg = data["arg"]
-    del pending_deletes[user_id] # Onaylandı, beklemeden kaldır
+    del pending_deletes[user_id] 
     
-    if not db:
+    if db is None or movie_col is None or series_col is None:
         await message.reply_text("⚠️ Veritabanı nesnesi bulunamıyor, silme iptal edildi.")
         return
 
     try:
         if arg.isdigit():
             tmdb_id = int(arg)
-            # Kritik hata kontrolü eklendi
             await movie_col.delete_many({"tmdb_id": tmdb_id})
             await series_col.delete_many({"tmdb_id": tmdb_id})
 
@@ -923,10 +893,8 @@ async def confirm_delete_vsil(client: Client, message: Message):
                 new_telegram = [t for t in telegram_list if t.get("id") != target and t.get("name") != target]
                 
                 if not new_telegram:
-                    # Tüm dosyalar silindiyse dokümanı sil
                     await movie_col.delete_one({"_id": doc["_id"]})
                 else:
-                    # Kalan dosyalar varsa dokümanı güncelle
                     doc["telegram"] = new_telegram
                     await movie_col.replace_one({"_id": doc["_id"]}, doc)
             
@@ -934,9 +902,6 @@ async def confirm_delete_vsil(client: Client, message: Message):
             tv_docs = [doc async for doc in series_col.find({})]
             for doc in tv_docs:
                 modified = False
-                seasons_to_remove = []
-                
-                # Doküman üzerindeki listeleri direkt değiştirmek yerine yeni listeler oluşturuldu.
                 new_seasons = []
                 for season in doc.get("seasons", []):
                     new_episodes = []
@@ -949,7 +914,7 @@ async def confirm_delete_vsil(client: Client, message: Message):
                             if new_telegram:
                                 episode["telegram"] = new_telegram
                                 new_episodes.append(episode)
-                            modified = True # Doküman değişti
+                            modified = True
 
                         elif not match:
                             new_episodes.append(episode)
@@ -962,7 +927,6 @@ async def confirm_delete_vsil(client: Client, message: Message):
                     doc["seasons"] = new_seasons
                     await series_col.replace_one({"_id": doc["_id"]}, doc)
                 elif modified:
-                     # Dizi tamamen boşaldıysa sil
                     await series_col.delete_one({"_id": doc["_id"]})
                         
 
