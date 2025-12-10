@@ -69,7 +69,7 @@ async def delete_file(client: Client, message: Message):
     if len(message.command) < 2:
         await message.reply_text(
             "⚠️ Kullanım:\n"
-            "/vsil <telegram_id | tmdb_id | imdb_id | dosya adı | stremio link>", 
+            "/vsil telegram_id | tmdb_id | imdb_id | dosya adı | stremio link ", 
             quote=True
         )
         return
