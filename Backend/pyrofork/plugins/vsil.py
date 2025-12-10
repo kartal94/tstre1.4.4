@@ -29,10 +29,10 @@ async def delete_file(client: Client, message: Message):
     if len(message.command) < 2:
         await message.reply_text(
             "⚠️ Lütfen silinecek dosya adını veya telegram ID girin:\n"
-            "/vsil <telegram_id>", quote=True)
+            "/vsil <telegram_id veya dosya_adı>", quote=True)
         return
 
-    telegram_id_arg = message.command[1]
+    target_arg = message.command[1]
     deleted_files = []
 
     try:
@@ -46,11 +46,14 @@ async def delete_file(client: Client, message: Message):
 
         # -------- movie koleksiyonu --------
         movie_col = db["movie"]
-        movie_docs = movie_col.find({"telegram.id": telegram_id_arg})
+        movie_docs = movie_col.find({"$or": [
+            {"telegram.id": target_arg},
+            {"telegram.name": target_arg}
+        ]})
         for doc in movie_docs:
             telegram_list = doc.get("telegram", [])
-            new_telegram = [t for t in telegram_list if t.get("id") != telegram_id_arg]
-            deleted_files += [t.get("name") for t in telegram_list if t.get("id") == telegram_id_arg]
+            new_telegram = [t for t in telegram_list if t.get("id") != target_arg and t.get("name") != target_arg]
+            deleted_files += [t.get("name") for t in telegram_list if t.get("id") == target_arg or t.get("name") == target_arg]
 
             if not new_telegram:
                 movie_col.delete_one({"_id": doc["_id"]})
@@ -68,19 +71,17 @@ async def delete_file(client: Client, message: Message):
                 episodes_to_remove = []
                 for episode in season.get("episodes", []):
                     telegram_list = episode.get("telegram", [])
-                    if any(t.get("id") == telegram_id_arg for t in telegram_list):
-                        deleted_files += [t.get("name") for t in telegram_list if t.get("id") == telegram_id_arg]
-                        new_telegram = [t for t in telegram_list if t.get("id") != telegram_id_arg]
+                    match = [t for t in telegram_list if t.get("id") == target_arg or t.get("name") == target_arg]
+                    if match:
+                        deleted_files += [t.get("name") for t in match]
+                        new_telegram = [t for t in telegram_list if t.get("id") != target_arg and t.get("name") != target_arg]
                         if new_telegram:
                             episode["telegram"] = new_telegram
                         else:
-                            # Bölümde başka telegram yoksa, bölüm tamamen silinir
-                            episodes_to_remove.append(episode)
+                            episodes_to_remove.append(episode)  # bölüm tamamen silinecek
                         modified = True
-                # Bölümleri sil
                 for ep in episodes_to_remove:
                     season["episodes"].remove(ep)
-                # Eğer sezonun tüm bölümleri silindiyse sezonu de kaldırabiliriz (opsiyonel)
                 if not season["episodes"]:
                     seasons_to_remove.append(season)
             for s in seasons_to_remove:
