@@ -34,7 +34,7 @@ def export_collections_to_json(url):
     return {"movie": movie_data, "tv": tv_data}
 
 # ---------------- /vtindir Komutu ----------------
-@Client.on_message(filters.command("vtindir") & filters.private & CustomFilters.owner)
+@Client.on_message(filters.command("vindir") & filters.private & CustomFilters.owner)
 async def download_collections(client: Client, message: Message):
     user_id = message.from_user.id
     now = time()
