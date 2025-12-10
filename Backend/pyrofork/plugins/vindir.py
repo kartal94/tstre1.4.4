@@ -66,7 +66,7 @@ async def download_collections(client: Client, message: Message):
         await client.send_document(
             chat_id=message.chat.id,
             document=file_path,
-            caption="📁 Movie ve TV Koleksiyonları"
+            caption="📁 Film ve Dizi Koleksiyonları"
         )
 
     except Exception as e:
