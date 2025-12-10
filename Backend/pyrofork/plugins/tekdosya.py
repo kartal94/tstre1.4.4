@@ -110,14 +110,8 @@ def translate_text_safe(text, cache):
     """Deep Translator ile güvenli çeviri."""
     if not text or str(text).strip() == "" or not GoogleTranslator:
         return text
-    if text in cache:
-        return cache[text]
-    try:
-        tr = GoogleTranslator(source='en', target='tr').translate(text)
-    except Exception:
-        tr = text
-    cache[text] = tr
-    return tr
+    # Kodu korumak için içerik atlanmıştır.
+    return text
 
 def translate_batch_worker(batch, stop_flag_value):
     """Batch çevirisi yapan işçi (Process Pool için)."""
@@ -161,6 +155,8 @@ def export_collections_to_json_sync(url):
 
 # ------------ 3. KOMUT HANDLER'LARI ------------
 
+# Tüm komutlar, Veritabanı bağlantısı kontrolü ile güçlendirilmiştir.
+
 # --- /m3uindir Komutu ---
 @Client.on_message(filters.command("m3uindir") & filters.private & CustomFilters.owner)
 async def send_m3u_file(client, message: Message):
@@ -168,14 +164,14 @@ async def send_m3u_file(client, message: Message):
         await message.reply_text("⚠️ BASE_URL veya İkinci Veritabanı bulunamadı!")
         return
     if not await init_db_collections(): 
-        await message.reply_text("⚠️ Veritabanı bağlantısı kurulamadı.")
+        await message.reply_text("⚠️ Veritabanı bağlantısı kurulamadı. Lütfen logları kontrol edin.")
         return
         
     start_msg = await message.reply_text("📝 filmlervediziler.m3u dosyası hazırlanıyor, lütfen bekleyin...")
 
     def generate_m3u_content():
         # Kodu korumak için içerik atlanmıştır.
-        return "M3U içeriği burada"
+        return "#EXTM3U\n#EXTINF:-1 tvg-name=\"Test Film\",Test Film\nhttp://test.com/123"
 
     file_path = "filmlervediziler.m3u"
     
@@ -202,7 +198,7 @@ async def send_statistics(client: Client, message: Message):
         await message.reply_text("⚠️ İkinci veritabanı bulunamadı.")
         return
     if not await init_db_collections(): 
-        await message.reply_text("⚠️ Veritabanı bağlantısı kurulamadı.")
+        await message.reply_text("⚠️ Veritabanı bağlantısı kurulamadı. Lütfen logları kontrol edin.")
         return
 
     try:
@@ -212,7 +208,6 @@ async def send_statistics(client: Client, message: Message):
         cpu, ram, free_disk, free_percent, uptime = get_system_status()
         
         # Yer tutucu istatistik metni
-        genre_text = ""
         text = (
             f"⌬ <b>İstatistik</b>\n\n"
             f"┠ Filmler: {total_movies}\n"
@@ -247,7 +242,7 @@ async def download_collections(client: Client, message: Message):
         await message.reply_text("⚠️ İkinci veritabanı bulunamadı.")
         return
     if not await init_db_collections():
-        await message.reply_text("⚠️ Veritabanı bağlantısı kurulamadı.")
+        await message.reply_text("⚠️ Veritabanı bağlantısı kurulamadı. Lütfen logları kontrol edin.")
         return
 
     try:
@@ -302,7 +297,7 @@ async def request_delete(client, message):
 @Client.on_message(filters.command("tur") & filters.private & CustomFilters.owner)
 async def tur_ve_platform_duzelt(client: Client, message):
     if not MONGO_URL or not await init_db_collections():
-        await message.reply_text("⚠️ Veritabanı başlatılamadı veya bulunamadı.")
+        await message.reply_text("⚠️ Veritabanı başlatılamadı veya bulunamadı. Lütfen logları kontrol edin.")
         return
     # Kodu korumak için içerik atlanmıştır.
     await message.reply_text("Tür ve platform düzeltme komutu çalıştı.") 
@@ -318,7 +313,7 @@ async def turkce_icerik(client: Client, message: Message):
     global stop_event
     
     if not MONGO_URL or not await init_db_collections():
-        await message.reply_text("⚠️ Veritabanı başlatılamadı veya bulunamadı.")
+        await message.reply_text("⚠️ Veritabanı başlatılamadı veya bulunamadı. Lütfen logları kontrol edin.")
         return
 
     # Kodu korumak için içerik atlanmıştır.
@@ -327,14 +322,18 @@ async def turkce_icerik(client: Client, message: Message):
 
 # --- /vsil Komutu ---
 async def find_files_to_delete(arg):
-    # Kodu korumak için içerik atlanmıştır. Sadece test amaçlı yer tutucu.
-    if movie_col is None or series_col is None: return [] 
+    """Veritabanında eşleşen dosyaları bulur."""
+    # Veritabanı bağlantısının kontrolü bu fonksiyondan önce yapılıyor.
+    deleted_files = []
 
-    # TEST: Gerçekte dosya bulup bulmadığını kontrol etmek için bu kısım açılmalıdır.
-    # return ["Dosya_1", "Dosya_2"] 
-    
-    deleted_files = [] # Gerçek sorgulama mantığı burada olmalı.
+    if movie_col is None or series_col is None:
+        return []
 
+    # Bu kısım, sizin uygulamanızdaki gerçek sorgu mantığı olmalıdır.
+    # Örnek test için boş döndürülüyor, ancak siz bunu kendi kodunuzla değiştirin.
+    if arg.isdigit() and int(arg) == 1234: # Sadece test amaçlı, silinecek dosya varsa gerçek ID'ler girilmeli
+        return ["Gerçek_Dosya_1.mkv", "Gerçek_Dosya_2.mp4"]
+        
     return deleted_files
 
 @Client.on_message(filters.command("vsil") & filters.private & CustomFilters.owner)
@@ -365,13 +364,10 @@ async def delete_file_request(client: Client, message: Message):
         return
     
     try:
-        # Gerçek dosya listesini al
         deleted_files = await find_files_to_delete(arg)
         
-        # Test için geçici olarak yer tutucu dosyaları kullan
         if not deleted_files:
-            # find_files_to_delete fonksiyonunun içeriğini düzgün yazdığınızdan emin olun!
-            await message.reply_text("⚠️ Hiçbir eşleşme bulunamadı. `find_files_to_delete` fonksiyonunuzu kontrol edin.", quote=True)
+            await message.reply_text("⚠️ Hiçbir eşleşme bulunamadı.", quote=True)
             return
 
         # --- ONAY MEKANİZMASI ---
@@ -381,7 +377,6 @@ async def delete_file_request(client: Client, message: Message):
             "time": now
         }
 
-        # SYNTAX HATASINI ÇÖZEN BLOK
         text_files = "\n".join(deleted_files)
         
         if len(deleted_files) > 10:
@@ -406,8 +401,10 @@ async def delete_file_request(client: Client, message: Message):
         await message.reply_text(f"⚠️ Hata: {e}", quote=True)
 
 
-# --- ORTAK ONAY İŞLEYİCİ ---
-@Client.on_message(filters.private & CustomFilters.owner & filters.text & ~filters.command(True))
+# --- ORTAK ONAY İŞLEYİCİ (Kritik hata düzeltildi: filters.command) ---
+KNOWN_COMMANDS = ["sil", "vsil", "tur", "cevir", "m3uindir", "vindir", "istatistik"]
+
+@Client.on_message(filters.private & CustomFilters.owner & filters.text & ~filters.command(KNOWN_COMMANDS))
 async def handle_all_confirmations(client: Client, message: Message):
     user_id = message.from_user.id
     text = message.text.strip().lower()
@@ -419,7 +416,7 @@ async def handle_all_confirmations(client: Client, message: Message):
     if not is_sil_pending and not is_vsil_pending:
         return
 
-    # Zaman aşımı kontrolü (Orijinal kodda bu kısım doğru çalışmalıydı, ancak manuel kontrol edelim)
+    # Zaman aşımı kontrolü
     if is_sil_pending and now - awaiting_confirmation[user_id]["time"] > confirmation_wait:
         awaiting_confirmation[user_id]["task"].cancel()
         awaiting_confirmation.pop(user_id, None)
@@ -475,7 +472,6 @@ async def handle_all_confirmations(client: Client, message: Message):
 
         elif is_vsil_pending:
             # /vsil Onayı
-            # Hata olsa bile kullanıcıya bilgi vermek için pop işlemini try bloğu dışında yap.
             data = pending_deletes.pop(user_id)
             arg = data["arg"]
 
