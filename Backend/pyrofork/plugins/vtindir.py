@@ -1,8 +1,4 @@
-import asyncio
-import time
 from pyrogram import Client, filters
-# Hata yönetimi için FloodWait'i içe aktarıyoruz
-from pyrogram.errors import FloodWait 
 from pyrogram.types import Message
 from Backend.helper.custom_filter import CustomFilters
 from pymongo import MongoClient
@@ -11,6 +7,7 @@ import importlib.util
 import json
 import datetime
 import tempfile
+import time
 
 # ------------ DATABASE Bağlantısı ------------
 CONFIG_PATH = "/home/debian/dfbot/config.env"
@@ -41,7 +38,7 @@ db = client_db[db_name]
 # ------------ GLOBAL FLAG İPTAL ------------
 cancel_process = False
 
-# ------------ /vtindir Komutu (Düzeltildi) ------------
+# ------------ /dbindir Komutu ------------
 @Client.on_message(filters.command("vtindir") & filters.private & CustomFilters.owner)
 async def download_database(client, message: Message):
     global cancel_process
@@ -56,16 +53,11 @@ async def download_database(client, message: Message):
     tmp_file_path = tmp_file.name
     tmp_file.close()
 
-    # 💡 THROTTLING AYARI: Minimum 5 saniyede bir mesajı güncelle
-    MIN_UPDATE_INTERVAL = 5 
-
     try:
         collections = db.list_collection_names()
-        # count_documents yerine estimated_document_count kullanabilirsiniz (daha hızlı, ama tahmini sonuç verir)
-        total_docs = sum(db[col].count_documents({}) for col in collections) 
+        total_docs = sum(db[col].count_documents({}) for col in collections)
         processed_docs = 0
         start_time = time.time()
-        last_update_time = time.time() # Son güncelleme zamanı
 
         with open(tmp_file_path, "w", encoding="utf-8") as f:
             f.write("{")
@@ -90,38 +82,18 @@ async def download_database(client, message: Message):
                     else:
                         first_doc = False
 
-                    # MongoDB'deki ObjectId ve diğer özel tipleri JSON uyumlu hale getirir
-                    f.write(json.dumps(doc, default=str, ensure_ascii=False)) 
+                    f.write(json.dumps(doc, default=str, ensure_ascii=False))
                     processed_docs += 1
 
-                    # 🔑 Düzeltme: Zaman tabanlı kısıtlama (Throttling) koşulu
-                    current_time = time.time()
-                    
-                    # Sadece son belgede veya 50 belge ve minimum 5 saniye geçmişse güncelle
-                    if processed_docs == total_docs or (processed_docs % 50 == 0 and current_time - last_update_time >= MIN_UPDATE_INTERVAL):
-                        elapsed = current_time - start_time
-                        remaining = (elapsed / processed_docs) * (total_docs - processed_docs) if processed_docs > 0 else 0
-                        
-                        try:
-                            await start_msg.edit_text(
-                                f"💾 Database hazırlanıyor...\n"
-                                f"İlerleme: **{processed_docs} / {total_docs}** belgeler\n"
-                                f"Tahmini kalan süre: {int(remaining)} saniye"
-                            )
-                            # Başarılı güncellemeden sonra zamanı sıfırla
-                            last_update_time = current_time 
-
-                        # 🚨 KRİTİK DÜZELTME: FloodWait hatasını yakala ve bekle
-                        except FloodWait as e:
-                            wait_time = e.value # Telegram'ın istediği bekleme süresi (saniye)
-                            print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] TELEGRAM FLOOD WAIT: {wait_time} saniye bekleniyor...")
-                            await asyncio.sleep(wait_time)
-                            # Bekledikten sonra bir sonraki döngüde devam edecek
-                            last_update_time = time.time()
-                        
-                        except Exception as e_gen:
-                            # Mesaj silinmiş/düzenlenemiyor olabilir, devam et
-                            pass
+                    # Tahmini süreyi her 50 belge de bir güncelle
+                    if processed_docs % 50 == 0 or processed_docs == total_docs:
+                        elapsed = time.time() - start_time
+                        remaining = (elapsed / processed_docs) * (total_docs - processed_docs) if processed_docs else 0
+                        await start_msg.edit_text(
+                            f"💾 Database hazırlanıyor...\n"
+                            f"İlerleme: {processed_docs}/{total_docs} belgeler\n"
+                            f"Tahmini kalan süre: {int(remaining)} saniye"
+                        )
 
                 f.write("]")
             f.write("}")
@@ -131,13 +103,13 @@ async def download_database(client, message: Message):
             chat_id=message.chat.id,
             document=tmp_file_path,
             file_name=file_name,
-            caption=f"📂 Veritabanı: **{db_name}** ({timestamp})"
+            caption=f"📂 Veritabanı: {db_name} ({timestamp})"
         )
 
         await start_msg.delete()
 
     except Exception as e:
-        await start_msg.edit_text(f"❌ Database indirilemedi.\nHata: `{e}`")
+        await start_msg.edit_text(f"❌ Database indirilemedi.\nHata: {e}")
 
     finally:
         if os.path.exists(tmp_file_path):
