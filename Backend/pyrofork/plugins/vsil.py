@@ -29,10 +29,12 @@ async def delete_file(client: Client, message: Message):
     last_command_time[user_id] = now
 
     if len(message.command) < 2:
-        await message.reply_text("⚠️ Lütfen silinecek dosya adını yazın:\n/vsil <dosya_adı>", quote=True)
+        await message.reply_text(
+            "⚠️ Lütfen silinecek dosya adını veya ID girin:\n"
+            "/vsil <isim>\n"
+            "/vsil tmdb <id>\n"
+            "/vsil tt<imdb_id>", quote=True)
         return
-
-    file_name = " ".join(message.command[1:])
 
     try:
         if not db_urls or len(db_urls) < 2:
@@ -43,36 +45,103 @@ async def delete_file(client: Client, message: Message):
         db_name_list = client_db.list_database_names()
         db = client_db[db_name_list[0]]
 
-        deleted_count = 0
+        deleted_files = []
+
+        args = message.command[1:]
+        tmdb_id = None
+        imdb_id = None
+        query_str = None
+
+        if args[0].lower() == "tmdb" and len(args) > 1:
+            tmdb_id = int(args[1])
+        elif args[0].lower().startswith("tt"):
+            imdb_id = args[0]
+        else:
+            query_str = " ".join(args).lower()
 
         # -------- movie koleksiyonu --------
         movie_col = db["movie"]
-        result = movie_col.update_many(
-            {"telegram.name": file_name},
-            {"$pull": {"telegram": {"name": file_name}}}
-        )
-        deleted_count += result.modified_count
+        movie_query = {}
+        if tmdb_id:
+            movie_query["tmdb_id"] = tmdb_id
+        elif imdb_id:
+            movie_query["imdb_id"] = imdb_id
+        elif query_str:
+            movie_query["$or"] = [
+                {"title": {"$regex": query_str, "$options": "i"}},
+                {"telegram.name": {"$regex": query_str, "$options": "i"}}
+            ]
+
+        movie_docs = movie_col.find(movie_query)
+        for doc in movie_docs:
+            telegram_list = doc.get("telegram", [])
+            if tmdb_id or imdb_id:
+                for t in telegram_list:
+                    deleted_files.append(t.get("name"))
+                doc["telegram"] = []
+            elif query_str:
+                new_telegram = []
+                for t in telegram_list:
+                    if query_str in t.get("name", "").lower():
+                        deleted_files.append(t.get("name"))
+                    else:
+                        new_telegram.append(t)
+                doc["telegram"] = new_telegram
+            if telegram_list != doc.get("telegram"):
+                movie_col.replace_one({"_id": doc["_id"]}, doc)
 
         # -------- tv koleksiyonu --------
         tv_col = db["tv"]
         tv_docs = tv_col.find({})
         for doc in tv_docs:
-            modified = False
-            for season in doc.get("seasons", []):
-                for episode in season.get("episodes", []):
-                    telegram_list = episode.get("telegram", [])
-                    new_telegram = [t for t in telegram_list if t.get("name") != file_name]
-                    if len(new_telegram) != len(telegram_list):
-                        episode["telegram"] = new_telegram
-                        modified = True
-            if modified:
-                tv_col.replace_one({"_id": doc["_id"]}, doc)
-                deleted_count += 1
+            match = False
+            if tmdb_id and doc.get("tmdb_id") == tmdb_id:
+                match = True
+            elif imdb_id and doc.get("imdb_id") == imdb_id:
+                match = True
+            elif query_str and (query_str in doc.get("title", "").lower() or
+                                any(query_str in t.get("name", "").lower()
+                                    for s in doc.get("seasons", [])
+                                    for e in s.get("episodes", [])
+                                    for t in e.get("telegram", []))):
+                match = True
 
-        if deleted_count == 0:
-            await message.reply_text(f"⚠️ '{file_name}' bulunamadı.", quote=True)
+            if match:
+                modified = False
+                for season in doc.get("seasons", []):
+                    for episode in season.get("episodes", []):
+                        telegram_list = episode.get("telegram", [])
+                        if tmdb_id or imdb_id:
+                            for t in telegram_list:
+                                deleted_files.append(t.get("name"))
+                            episode["telegram"] = []
+                        else:
+                            new_telegram = []
+                            for t in telegram_list:
+                                if query_str in t.get("name", "").lower():
+                                    deleted_files.append(t.get("name"))
+                                else:
+                                    new_telegram.append(t)
+                            episode["telegram"] = new_telegram
+                        if telegram_list != episode["telegram"]:
+                            modified = True
+                if modified:
+                    tv_col.replace_one({"_id": doc["_id"]}, doc)
+
+        if not deleted_files:
+            await message.reply_text("⚠️ Hiçbir eşleşme bulunamadı.", quote=True)
+            return
+
+        # Silinen dosyaları gönder
+        if len(deleted_files) > 50 or sum(len(f) for f in deleted_files) > 4000:
+            # TXT dosyası olarak gönder
+            file_path = f"/tmp/deleted_files_{int(time())}.txt"
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(deleted_files))
+            await client.send_document(chat_id=message.chat.id, document=file_path, caption="✅ Silinen dosyalar")
         else:
-            await message.reply_text(f"✅ '{file_name}' başarıyla silindi. Toplam değiştirilen doküman sayısı: {deleted_count}", quote=True)
+            deleted_list_text = "\n".join(deleted_files)
+            await message.reply_text(f"✅ Silinen dosyalar:\n{deleted_list_text}", quote=True)
 
     except Exception as e:
         await message.reply_text(f"⚠️ Hata: {e}", quote=True)
