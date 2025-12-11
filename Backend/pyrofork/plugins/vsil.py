@@ -14,8 +14,9 @@ if os.path.exists(CONFIG_PATH):
 DATABASE_URLS = os.getenv("DATABASE", "")
 db_urls = [u.strip() for u in DATABASE_URLS.split(",") if u.strip()]
 
+
 # ------------------------------------------------------------------
-#  UNIVERSAL ID PARSE + STREMIO → TMDB → IMDb fallback
+#  UNIVERSAL ID PARSE
 # ------------------------------------------------------------------
 
 def extract_id(raw):
@@ -42,7 +43,7 @@ def extract_id(raw):
 
 
 # ------------------------------------------------------------------
-#  SİLME MOTORU
+#  DELETE ENGINE
 # ------------------------------------------------------------------
 
 def process_delete(db, id_type, val, imdb_fallback=None, test=False,
@@ -53,7 +54,7 @@ def process_delete(db, id_type, val, imdb_fallback=None, test=False,
     def allow(cat):
         return category == "all" or category == cat
 
-    # ---------------- TMDB ----------------
+    # --------------- TMDB ----------------
     if id_type == "tmdb":
         tmdb_id = int(val)
         movie_docs = list(db["movie"].find({"tmdb_id": tmdb_id})) if allow("movie") else []
@@ -75,7 +76,7 @@ def process_delete(db, id_type, val, imdb_fallback=None, test=False,
             if season:
                 for s in doc.get("seasons", []):
                     if s.get("season_number") == season:
-                        eps_to_remove = []
+                        remove_eps = []
                         for ep in s.get("episodes", []):
                             if episodes:
                                 if ep.get("episode_number") in episodes:
@@ -87,8 +88,9 @@ def process_delete(db, id_type, val, imdb_fallback=None, test=False,
                                 for t in ep.get("telegram", []):
                                     deleted.append(t.get("name"))
                                 if not test:
-                                    eps_to_remove.append(ep)
-                        for ep in eps_to_remove:
+                                    remove_eps.append(ep)
+
+                        for ep in remove_eps:
                             s["episodes"].remove(ep)
 
                 if not test:
@@ -99,7 +101,7 @@ def process_delete(db, id_type, val, imdb_fallback=None, test=False,
                         doc["seasons"] = doc_seasons
                         db["tv"].replace_one({"_id": doc["_id"]}, doc)
 
-            else:  # komple TV silme
+            else:  # Complete TV delete
                 for s in doc.get("seasons", []):
                     for e in s.get("episodes", []):
                         for t in e.get("telegram", []):
@@ -109,21 +111,19 @@ def process_delete(db, id_type, val, imdb_fallback=None, test=False,
 
         return deleted
 
-    # ---------------- IMDb ----------------
+    # --------------- IMDb ----------------
     if id_type == "imdb":
         imdb_id = val
 
         movie_docs = list(db["movie"].find({"imdb_id": imdb_id})) if allow("movie") else []
         tv_docs = list(db["tv"].find({"imdb_id": imdb_id})) if allow("tv") else []
 
-        # MOVIE
         for doc in movie_docs:
             for t in doc.get("telegram", []):
                 deleted.append(t.get("name"))
             if not test:
                 db["movie"].delete_one({"_id": doc["_id"]})
 
-        # TV
         for doc in tv_docs:
             for s in doc.get("seasons", []):
                 for e in s.get("episodes", []):
@@ -134,7 +134,7 @@ def process_delete(db, id_type, val, imdb_fallback=None, test=False,
 
         return deleted
 
-    # TELEGRAM / FILENAME
+    # --------------- TELEGRAM / FILENAME ----------------
     target = val
 
     if allow("movie"):
@@ -188,24 +188,31 @@ def process_delete(db, id_type, val, imdb_fallback=None, test=False,
 
 
 # ------------------------------------------------------------------
-#  TXT / MESAJ GÖNDERME
+#  FORMATTED OUTPUT NUMARALI LİSTE
 # ------------------------------------------------------------------
 
-async def send_output(message, data, prefix):
+async def send_output(message, data, prefix, is_tv=False, is_test=False):
     if not data:
         return await message.reply_text("⚠️ Dosya bulunamadı.")
+
+    title = "Silinecek Diziler:" if (is_tv and is_test) else \
+            "Silinen Diziler:" if is_tv else \
+            "Silinecek Filmler:" if is_test else "Silinen Filmler:"
+
+    numbered = "\n".join([f"{i+1}) {name}" for i, name in enumerate(data)])
+    text = f"{title}\n{numbered}"
 
     if len(data) > 10:
         path = f"/tmp/{prefix}_{int(time())}.txt"
         with open(path, "w", encoding="utf-8") as f:
-            f.write("\n".join(data))
+            f.write(text)
         await message.reply_document(path, caption=f"{len(data)} dosya listelendi.")
     else:
-        await message.reply_text("\n".join(data))
+        await message.reply_text(text)
 
 
 # ------------------------------------------------------------------
-#  /dizisil – TV SİL (sezon + bölüm destekli)
+#  /dizisil
 # ------------------------------------------------------------------
 
 @Client.on_message(filters.command("dizisil") & filters.private & CustomFilters.owner)
@@ -233,11 +240,11 @@ async def dizisil(client, message):
     data = process_delete(db, idt, val, fb, test=False,
                           category="tv", season=season, episodes=episodes)
 
-    await send_output(message, data, "dizisil")
+    await send_output(message, data, "dizisil", is_tv=True, is_test=False)
 
 
 # ------------------------------------------------------------------
-#  /dizisiltest – TEST MODU
+#  /dizisiltest
 # ------------------------------------------------------------------
 
 @Client.on_message(filters.command("dizisiltest") & filters.private & CustomFilters.owner)
@@ -265,11 +272,11 @@ async def dizisiltest(client, message):
     data = process_delete(db, idt, val, fb, test=True,
                           category="tv", season=season, episodes=episodes)
 
-    await send_output(message, data, "dizisiltest")
+    await send_output(message, data, "dizisiltest", is_tv=True, is_test=True)
 
 
 # ------------------------------------------------------------------
-#  /filmsil – Film silme
+#  /filmsil
 # ------------------------------------------------------------------
 
 @Client.on_message(filters.command("filmsil") & filters.private & CustomFilters.owner)
@@ -284,11 +291,11 @@ async def filmsil(client, message):
 
     data = process_delete(db, idt, val, fb, test=False, category="movie")
 
-    await send_output(message, data, "filmsil")
+    await send_output(message, data, "filmsil", is_tv=False, is_test=False)
 
 
 # ------------------------------------------------------------------
-#  /filmsiltest – Film silme test modu
+#  /filmsiltest
 # ------------------------------------------------------------------
 
 @Client.on_message(filters.command("filmsiltest") & filters.private & CustomFilters.owner)
@@ -303,4 +310,4 @@ async def filmsiltest(client, message):
 
     data = process_delete(db, idt, val, fb, test=True, category="movie")
 
-    await send_output(message, data, "filmsiltest")
+    await send_output(message, data, "filmsiltest", is_tv=False, is_test=True)
