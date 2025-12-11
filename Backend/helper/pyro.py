@@ -143,18 +143,29 @@ async def restart_notification():
 
 # Bot commands
 commands = [
-    BotCommand("start", "🚀 Botu başlat."),
-    BotCommand("istatistik", "📊 Bot istatistiklerini görüntüle."),
-    BotCommand("cevir", "🇹🇷 Açıklamaları Türkçeye çevir."),
-    BotCommand("tur", "⭐ Türleri Türkçeye çevir."),
-    BotCommand("restart", "♻️ Botu yeniden başlat."),
-    BotCommand("set", "🎬 IMDb meta verilerini elle ekleyin."),
-    BotCommand("vindir", "💾 Veritabanını indir."),
-    BotCommand("m3uindir", "📂 M3U dosyasını indir."),
-    BotCommand("log", "📄 Günlük dosyasını gönder."),
-    BotCommand("fixmetadata", "⚙️ Meta Veri'nin boş alanlarını düzeltin."),
-    BotCommand("vsil", "🗑️ Film veya dizileri seçerek silin."),
-    BotCommand("sil", "🗑️ Bütün filmleri ve dizileri sil.")
+BotCommand("start", "🚀 Botu başlat."),
+BotCommand("istatistik", "📊 Bot istatistiklerini görüntüle."),
+BotCommand("cevir", "🇹🇷 Açıklamaları Türkçeye çevir."),
+BotCommand("tur", "⭐ Türleri Türkçeye çevir."),
+BotCommand("restart", "♻️ Botu yeniden başlat."),
+BotCommand("set", "🎬 IMDb meta verilerini elle ekleyin."),
+BotCommand("vindir", "💾 Veritabanını indir."),
+BotCommand("m3uindir", "📂 M3U dosyasını indir."),
+BotCommand("log", "📄 Günlük dosyasını gönder."),
+BotCommand("fixmetadata", "⚙️ Meta Veri'nin boş alanlarını düzeltin."),
+BotCommand("vsil", "🗑️ Film veya dizileri seçerek silin."),
+BotCommand("sil", "🗑️ Bütün filmleri ve dizileri sil."),
+BotCommand("vtest", "📝 Silmeden hangi dosyaların silineceğini test edin."),
+BotCommand("vbilgi", "ℹ️ Film veya dizi dosyalarının bilgilerini göster."),
+BotCommand("vsild", "📺 Sadece dizileri silin."),
+BotCommand("vsildtest", "📝 Dizi silme testini yapın."),
+BotCommand("vsilf", "🎬 Sadece filmleri silin."),
+BotCommand("vsilftest", "📝 Film silme testini yapın."),
+BotCommand("vsilsezon", "📌 Belirli sezonu silin. Örn: /vsilsezon 12345 s3"),
+BotCommand("vsilsezontest", "📝 Sezon silme testini yapın."),
+BotCommand("vsilbolum", "📌 Belirli bölümleri silin. Örn: /vsilbolum 12345 s3e6e7e8"),
+BotCommand("vsilbolumtest", "📝 Bölüm silme testini yapın.")
+
     
 ]
 
