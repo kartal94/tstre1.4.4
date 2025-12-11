@@ -45,7 +45,9 @@ def extract_id(raw):
 #  SİLME MOTORU
 # ------------------------------------------------------------------
 
-def process_delete(db, id_type, val, imdb_fallback=None, test=False, category="all", season=None, episodes=None):
+def process_delete(db, id_type, val, imdb_fallback=None, test=False,
+                   category="all", season=None, episodes=None):
+
     deleted = []
 
     def allow(cat):
@@ -58,16 +60,19 @@ def process_delete(db, id_type, val, imdb_fallback=None, test=False, category="a
         tv_docs = list(db["tv"].find({"tmdb_id": tmdb_id})) if allow("tv") else []
 
         if not movie_docs and not tv_docs and imdb_fallback:
-            return process_delete(db, "imdb", imdb_fallback, None, test, category, season, episodes)
+            return process_delete(db, "imdb", imdb_fallback, None,
+                                  test, category, season, episodes)
 
+        # MOVIE
         for doc in movie_docs:
             for t in doc.get("telegram", []):
                 deleted.append(t.get("name"))
             if not test:
                 db["movie"].delete_one({"_id": doc["_id"]})
 
+        # TV
         for doc in tv_docs:
-            if season:  # sezon veya bölüm silme
+            if season:
                 for s in doc.get("seasons", []):
                     if s.get("season_number") == season:
                         eps_to_remove = []
@@ -85,6 +90,7 @@ def process_delete(db, id_type, val, imdb_fallback=None, test=False, category="a
                                     eps_to_remove.append(ep)
                         for ep in eps_to_remove:
                             s["episodes"].remove(ep)
+
                 if not test:
                     doc_seasons = [s for s in doc.get("seasons", []) if s.get("episodes")]
                     if not doc_seasons:
@@ -92,7 +98,8 @@ def process_delete(db, id_type, val, imdb_fallback=None, test=False, category="a
                     else:
                         doc["seasons"] = doc_seasons
                         db["tv"].replace_one({"_id": doc["_id"]}, doc)
-            else:  # komple silme
+
+            else:  # komple TV silme
                 for s in doc.get("seasons", []):
                     for e in s.get("episodes", []):
                         for t in e.get("telegram", []):
@@ -105,15 +112,18 @@ def process_delete(db, id_type, val, imdb_fallback=None, test=False, category="a
     # ---------------- IMDb ----------------
     if id_type == "imdb":
         imdb_id = val
+
         movie_docs = list(db["movie"].find({"imdb_id": imdb_id})) if allow("movie") else []
         tv_docs = list(db["tv"].find({"imdb_id": imdb_id})) if allow("tv") else []
 
+        # MOVIE
         for doc in movie_docs:
             for t in doc.get("telegram", []):
                 deleted.append(t.get("name"))
             if not test:
                 db["movie"].delete_one({"_id": doc["_id"]})
 
+        # TV
         for doc in tv_docs:
             for s in doc.get("seasons", []):
                 for e in s.get("episodes", []):
@@ -124,7 +134,7 @@ def process_delete(db, id_type, val, imdb_fallback=None, test=False, category="a
 
         return deleted
 
-    # ------------- TELEGRAM / FILENAME -------------
+    # TELEGRAM / FILENAME
     target = val
 
     if allow("movie"):
@@ -148,6 +158,7 @@ def process_delete(db, id_type, val, imdb_fallback=None, test=False, category="a
             for s in doc.get("seasons", []):
                 if season and s.get("season_number") != season:
                     continue
+
                 remove_eps = []
                 for ep in s.get("episodes", []):
                     if episodes and ep.get("episode_number") not in episodes:
@@ -157,8 +168,10 @@ def process_delete(db, id_type, val, imdb_fallback=None, test=False, category="a
                     if not test:
                         remove_eps.append(ep)
                         changed = True
+
                 for e in remove_eps:
                     s["episodes"].remove(e)
+
                 if not s["episodes"]:
                     remove_seasons.append(s)
 
@@ -192,13 +205,13 @@ async def send_output(message, data, prefix):
 
 
 # ------------------------------------------------------------------
-#  /vsild – TV SİL + sezon/bölüm silme entegre
+#  /dizisil – TV SİL (sezon + bölüm destekli)
 # ------------------------------------------------------------------
 
-@Client.on_message(filters.command("sildizi") & filters.private & CustomFilters.owner)
-async def vsild(client, message):
+@Client.on_message(filters.command("dizisil") & filters.private & CustomFilters.owner)
+async def dizisil(client, message):
     if len(message.command) < 2:
-        return await message.reply_text("Kullanım:\n/sildizi id\n/sildizi id s3\n/sildizi id s3e5e6")
+        return await message.reply_text("Kullanım:\n/dizisil id\n/dizisil id s3\n/dizisil id s3e5e6")
 
     mongo = MongoClient(db_urls[1])
     db = mongo[mongo.list_database_names()[0]]
@@ -210,25 +223,27 @@ async def vsild(client, message):
 
     if len(message.command) >= 3:
         txt = message.command[2].lower()
-        season_match = re.match(r"s(\d+)((?:e\d+)*)", txt)
-        if season_match:
-            season = int(season_match.group(1))
-            eps_str = season_match.group(2)
-            if eps_str:
-                episodes = [int(x[1:]) for x in re.findall(r"e\d+", eps_str)]
+        s = re.match(r"s(\d+)((?:e\d+)*)", txt)
+        if s:
+            season = int(s.group(1))
+            eps_raw = s.group(2)
+            if eps_raw:
+                episodes = [int(x[1:]) for x in re.findall(r"e\d+", eps_raw)]
 
-    data = process_delete(db, idt, val, fb, test=False, category="tv", season=season, episodes=episodes)
-    await send_output(message, data, "vsild")
+    data = process_delete(db, idt, val, fb, test=False,
+                          category="tv", season=season, episodes=episodes)
+
+    await send_output(message, data, "dizisil")
 
 
 # ------------------------------------------------------------------
-#  /vsildtest – Test modu (sezon/bölüm özellikleri entegre)
+#  /dizisiltest – TEST MODU
 # ------------------------------------------------------------------
 
-@Client.on_message(filters.command("sildizitest") & filters.private & CustomFilters.owner)
-async def vsildtest(client, message):
+@Client.on_message(filters.command("dizisiltest") & filters.private & CustomFilters.owner)
+async def dizisiltest(client, message):
     if len(message.command) < 2:
-        return await message.reply_text("Kullanım:\n/sildizitest id\n/sildizitest id s3\n/sildizitest id s3e5e6")
+        return await message.reply_text("Kullanım:\n/dizisiltest id\n/dizisiltest id s3\n/dizisiltest id s3e5e6")
 
     mongo = MongoClient(db_urls[1])
     db = mongo[mongo.list_database_names()[0]]
@@ -240,12 +255,52 @@ async def vsildtest(client, message):
 
     if len(message.command) >= 3:
         txt = message.command[2].lower()
-        season_match = re.match(r"s(\d+)((?:e\d+)*)", txt)
-        if season_match:
-            season = int(season_match.group(1))
-            eps_str = season_match.group(2)
-            if eps_str:
-                episodes = [int(x[1:]) for x in re.findall(r"e\d+", eps_str)]
+        s = re.match(r"s(\d+)((?:e\d+)*)", txt)
+        if s:
+            season = int(s.group(1))
+            eps_raw = s.group(2)
+            if eps_raw:
+                episodes = [int(x[1:]) for x in re.findall(r"e\d+", eps_raw)]
 
-    data = process_delete(db, idt, val, fb, test=True, category="tv", season=season, episodes=episodes)
-    await send_output(message, data, "vsildtest")
+    data = process_delete(db, idt, val, fb, test=True,
+                          category="tv", season=season, episodes=episodes)
+
+    await send_output(message, data, "dizisiltest")
+
+
+# ------------------------------------------------------------------
+#  /filmsil – Film silme
+# ------------------------------------------------------------------
+
+@Client.on_message(filters.command("filmsil") & filters.private & CustomFilters.owner)
+async def filmsil(client, message):
+    if len(message.command) < 2:
+        return await message.reply_text("Kullanım: /filmsil id")
+
+    mongo = MongoClient(db_urls[1])
+    db = mongo[mongo.list_database_names()[0]]
+
+    idt, val, fb = extract_id(message.command[1])
+
+    data = process_delete(db, idt, val, fb, test=False, category="movie")
+
+    await send_output(message, data, "filmsil")
+
+
+# ------------------------------------------------------------------
+#  /filmsiltest – Film silme test modu
+# ------------------------------------------------------------------
+
+@Client.on_message(filters.command("filmsiltest") & filters.private & CustomFilters.owner)
+async def filmsiltest(client, message):
+    if len(message.command) < 2:
+        return await message.reply_text("Kullanım: /filmsiltest id")
+
+    mongo = MongoClient(db_urls[1])
+    db = mongo[mongo.list_database_names()[0]]
+
+    idt, val, fb = extract_id(message.command[1])
+
+    data = process_delete(db, idt, val, fb, test=True, category="movie")
+
+    await send_output(message, data, "filmsiltest")
