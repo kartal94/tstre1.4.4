@@ -215,7 +215,7 @@ async def process_collection_parallel(collection, name, message):
                 f"{sys_info}"
             )
             if last_translated_batch:
-                text += "\n\nSon çevrilen içerikler:\n" + "\n".join(f"- {t}" for t in last_translated_batch[:5])
+                text += "\n\nSon çevrilen içerikler:\n" + "\n".join(f"- {t}" for t in last_translated_batch[:10])
             await safe_edit_text(
                 message,
                 text,
