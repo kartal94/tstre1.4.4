@@ -273,12 +273,9 @@ async def turkce_icerik(client: Client, message: Message):
     await process_collection_parallel(movie_col, "Filmler", start_msg, progress_data, last_text_holder, start_time)
     await process_collection_parallel(series_col, "Diziler", start_msg, progress_data, last_text_holder, start_time)
 
-    # Final ekranı: kalan 0 olduğunda üret
-    total_all = sum(progress_data[name]["total"] for name in progress_data)
-    done_all = sum(progress_data[name]["done"] for name in progress_data)
-    remaining_all = total_all - done_all
-
-    if remaining_all == 0:
+    # Final ekranı: Filmler ve Diziler %100 olduğunda üret
+    if progress_data["Filmler"]["done"] == progress_data["Filmler"]["total"] and \
+       progress_data["Diziler"]["done"] == progress_data["Diziler"]["total"]:
         elapsed = time.time() - start_time
         final_text = generate_final_summary(progress_data, elapsed)
         await safe_edit_message(start_msg, final_text)
