@@ -5,16 +5,11 @@ from pymongo import MongoClient
 import os
 import json
 from time import time
-from dotenv import load_dotenv
 
-CONFIG_PATH = "/home/debian/dfbot/config.env"
 flood_wait = 30  # saniye
 last_command_time = {}  # kullanıcı_id : zaman
 
-# ---------------- .env Yükleme ----------------
-if os.path.exists(CONFIG_PATH):
-    load_dotenv(CONFIG_PATH)
-
+# ---------------- SADECE ENV'DEN DATABASE AL ----------------
 DATABASE_URLS = os.getenv("DATABASE", "")
 db_urls = [u.strip() for u in DATABASE_URLS.split(",") if u.strip()]
 
@@ -27,13 +22,12 @@ def export_collections_to_json(url):
 
     db = client[db_name_list[0]]
 
-    # _id hariç tüm dokümanlar
     movie_data = list(db["movie"].find({}, {"_id": 0}))
     tv_data = list(db["tv"].find({}, {"_id": 0}))
 
     return {"movie": movie_data, "tv": tv_data}
 
-# ---------------- /vtindir Komutu ----------------
+# ---------------- /vindir Komutu ----------------
 @Client.on_message(filters.command("vindir") & filters.private & CustomFilters.owner)
 async def download_collections(client: Client, message: Message):
     user_id = message.from_user.id
@@ -55,14 +49,11 @@ async def download_collections(client: Client, message: Message):
             await message.reply_text("⚠️ Koleksiyonlar boş veya bulunamadı.")
             return
 
-        # Dosya yolu
         file_path = "/tmp/dizi_ve_film_veritabanı.json"
 
-        # JSON yazarken datetime ve diğer serialize edilemeyen tipleri string yap
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(combined_data, f, ensure_ascii=False, indent=2, default=str)
 
-        # Telegram'a gönder
         await client.send_document(
             chat_id=message.chat.id,
             document=file_path,
@@ -71,4 +62,4 @@ async def download_collections(client: Client, message: Message):
 
     except Exception as e:
         await message.reply_text(f"⚠️ Hata: {e}")
-        print("vtindir hata:", e)
+        print("vindir hata:", e)
