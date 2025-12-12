@@ -50,22 +50,11 @@ def dynamic_config(collection_type="general"):
 
     # Filmler ve Diziler için ayrı batch
     if collection_type == "Filmler":
-        if ram_percent < 60:
-            batch = 40
-        else:
-            batch = 20
+        batch = 40 if ram_percent < 60 else 20
     elif collection_type == "Diziler":
-        if ram_percent < 60:
-            batch = 20
-        else:
-            batch = 10
+        batch = 20 if ram_percent < 60 else 10
     else:
-        if ram_percent < 40:
-            batch = 40
-        elif ram_percent < 60:
-            batch = 20
-        else:
-            batch = 10
+        batch = 20
 
     return workers, batch, cpu_percent, ram_percent
 
@@ -82,7 +71,7 @@ def translate_text_safe(text, cache):
     cache[text] = tr
     return tr
 
-# ------------ Progress Bar (her zaman gösterilecek) ------------
+# ------------ Progress Bar ------------
 def progress_bar(current, total, bar_length=12):
     if total == 0:
         return "[⬡" + "⬡"*(bar_length-1) + "] 0.00%"
@@ -155,8 +144,8 @@ def generate_progress_text(progress_data):
         )
     return text
 
-# ------------ Paralel koleksiyon işleyici (15s garantili güncelleme) ------------
-async def process_collection_parallel(collection, name, message, progress_data):
+# ------------ Paralel koleksiyon işleyici (5 içerik + 15-20s aralık + değişim kontrolü) ------------
+async def process_collection_parallel(collection, name, message, progress_data, last_text_holder):
     loop = asyncio.get_event_loop()
     total = collection.count_documents({})
     done = 0
@@ -180,7 +169,6 @@ async def process_collection_parallel(collection, name, message, progress_data):
         if not batch_docs:
             break
 
-        batch_start = time.time()
         try:
             future = loop.run_in_executor(pool, translate_batch_worker, batch_docs, stop_event)
             results = await future
@@ -197,32 +185,44 @@ async def process_collection_parallel(collection, name, message, progress_data):
                 if upd:
                     collection.update_one({"_id": _id}, {"$set": upd})
                 done += 1
+
+                # Güncelleme koşulları
+                update_now = False
+                if done % 5 == 0 or idx + len(batch_ids) >= len(ids):
+                    elapsed_since_last = time.time() - last_update
+                    if elapsed_since_last >= 15:
+                        update_now = True
+                    elif elapsed_since_last > 20:
+                        update_now = True
+
+                if update_now:
+                    elapsed = time.time() - start_time
+                    remaining = total - done
+                    eta = remaining / (done / elapsed) if done > 0 else float("inf")
+                    eta_str = time.strftime("%H:%M:%S", time.gmtime(eta)) if math.isfinite(eta) else "∞"
+                    elapsed_str = time.strftime("%H:%M:%S", time.gmtime(elapsed))
+                    _, _, cpu_percent, ram_percent = dynamic_config(name)
+                    progress_data[name] = {
+                        "done": done,
+                        "total": total,
+                        "errors": errors,
+                        "elapsed": elapsed_str,
+                        "eta": eta_str,
+                        "cpu": cpu_percent,
+                        "ram": ram_percent,
+                        "workers": workers,
+                        "batch": batch_size
+                    }
+                    new_text = generate_progress_text(progress_data)
+                    # FloodWait önleme: sadece değişiklik varsa yaz
+                    if new_text != last_text_holder["text"]:
+                        await safe_edit_message(message, new_text,
+                                                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ İptal Et", callback_data="stop")]]))
+                        last_text_holder["text"] = new_text
+                        last_update = time.time()
+
             except Exception:
                 errors += 1
-
-            # 15 saniyede bir mesaj güncelle
-            if time.time() - last_update > 15:
-                elapsed = time.time() - start_time
-                remaining = total - done
-                eta = remaining / (done / elapsed) if done > 0 else float("inf")
-                eta_str = time.strftime("%H:%M:%S", time.gmtime(eta)) if math.isfinite(eta) else "∞"
-                elapsed_str = time.strftime("%H:%M:%S", time.gmtime(elapsed))
-                _, _, cpu_percent, ram_percent = dynamic_config(name)
-                progress_data[name] = {
-                    "done": done,
-                    "total": total,
-                    "errors": errors,
-                    "elapsed": elapsed_str,
-                    "eta": eta_str,
-                    "cpu": cpu_percent,
-                    "ram": ram_percent,
-                    "workers": workers,
-                    "batch": batch_size
-                }
-                text = generate_progress_text(progress_data)
-                await safe_edit_message(message, text,
-                                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ İptal Et", callback_data="stop")]]))
-                last_update = time.time()
 
         idx += len(batch_ids)
 
@@ -255,6 +255,8 @@ async def turkce_icerik(client: Client, message: Message):
                     "cpu": 0, "ram": 0, "workers": 0, "batch": 0}
     }
 
+    last_text_holder = {"text": ""}  # FloodWait önleme
+
     start_msg = await message.reply_text(
         generate_progress_text(progress_data),
         parse_mode=enums.ParseMode.MARKDOWN,
@@ -262,11 +264,11 @@ async def turkce_icerik(client: Client, message: Message):
     )
 
     movie_total, movie_done, movie_errors, movie_time = await process_collection_parallel(
-        movie_col, "Filmler", start_msg, progress_data
+        movie_col, "Filmler", start_msg, progress_data, last_text_holder
     )
 
     series_total, series_done, series_errors, series_time = await process_collection_parallel(
-        series_col, "Diziler", start_msg, progress_data
+        series_col, "Diziler", start_msg, progress_data, last_text_holder
     )
 
     total_all = movie_total + series_total
