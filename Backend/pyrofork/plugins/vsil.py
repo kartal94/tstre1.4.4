@@ -2,15 +2,10 @@ from pyrogram import Client, filters
 from pyrogram.types import Message
 from Backend.helper.custom_filter import CustomFilters
 from pymongo import MongoClient
-from dotenv import load_dotenv
 import os, re
 from time import time
 
-CONFIG_PATH = "/home/debian/dfbot/config.env"
-
-if os.path.exists(CONFIG_PATH):
-    load_dotenv(CONFIG_PATH)
-
+# ---------------- SADECE ENV'DEN DATABASE AL ----------------
 DATABASE_URLS = os.getenv("DATABASE", "")
 db_urls = [u.strip() for u in DATABASE_URLS.split(",") if u.strip()]
 
@@ -101,7 +96,7 @@ def process_delete(db, id_type, val, imdb_fallback=None, test=False,
                         doc["seasons"] = doc_seasons
                         db["tv"].replace_one({"_id": doc["_id"]}, doc)
 
-            else:  # Complete TV delete
+            else:
                 for s in doc.get("seasons", []):
                     for e in s.get("episodes", []):
                         for t in e.get("telegram", []):
@@ -188,7 +183,7 @@ def process_delete(db, id_type, val, imdb_fallback=None, test=False,
 
 
 # ------------------------------------------------------------------
-#  FORMATTED OUTPUT NUMARALI LİSTE
+#  FORMATTED OUTPUT
 # ------------------------------------------------------------------
 
 async def send_output(message, data, prefix, is_tv=False, is_test=False):
