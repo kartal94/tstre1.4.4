@@ -168,8 +168,10 @@ async def process_collection_parallel(collection, name, message, progress_data, 
     last_update = 0
     ids = [d["_id"] for d in collection.find({}, {"_id":1})]
 
+    workers, batch_size, cpu_percent, ram_percent = dynamic_config(name)
+    progress_data[name].update({"cpu":cpu_percent,"ram":ram_percent,"workers":workers,"batch":batch_size})
+
     idx = 0
-    workers, batch_size, _, _ = dynamic_config(name)
     pool = ProcessPoolExecutor(max_workers=workers)
 
     while idx < len(ids):
@@ -196,9 +198,9 @@ async def process_collection_parallel(collection, name, message, progress_data, 
                     collection.update_one({"_id":_id}, {"$set":upd})
                 done += 1
 
-                # Güncelleme koşulları: her 1 içerik + 15-20s aralığı
+                # Güncelleme: her 5 içerikte bir + 15-20 saniye
                 update_now = False
-                if done % 1 == 0 or idx + len(batch_ids) >= len(ids):
+                if done % 5 == 0 or idx + len(batch_ids) >= len(ids):
                     elapsed_since_last = time.time() - last_update
                     if elapsed_since_last >= 15 or elapsed_since_last > 20:
                         update_now = True
@@ -209,18 +211,17 @@ async def process_collection_parallel(collection, name, message, progress_data, 
                     remaining = total - done
                     eta = remaining / (done/elapsed) if done>0 else float("inf")
                     eta_str = time.strftime("%H:%M:%S", time.gmtime(eta)) if math.isfinite(eta) else "∞"
-                    _, _, cpu_percent, ram_percent = dynamic_config(name)
-                    progress_data[name] = {
+
+                    progress_data[name].update({
                         "done": done,
                         "total": total,
                         "errors": errors,
-                        "eta": eta_str,
-                        "cpu": cpu_percent,
-                        "ram": ram_percent,
-                        "workers": workers,
-                        "batch": batch_size
-                    }
+                        "eta": eta_str
+                    })
+
                     new_text = generate_progress_text(progress_data, elapsed_str)
+
+                    # 🔹 Sadece mesaj değiştiyse güncelle
                     if new_text != last_text_holder["text"]:
                         await safe_edit_message(message, new_text,
                             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ İptal Et", callback_data="stop")]]))
@@ -249,9 +250,13 @@ async def turkce_icerik(client: Client, message: Message):
     global stop_event
     stop_event.clear()
 
+    # Başlangıç değerleri gerçek config ile
+    workers_film, batch_film, cpu_film, ram_film = dynamic_config("Filmler")
+    workers_series, batch_series, cpu_series, ram_series = dynamic_config("Diziler")
+
     progress_data = {
-        "Filmler":{"done":0,"total":movie_col.count_documents({}),"errors":0,"eta":"∞","cpu":0,"ram":0,"workers":0,"batch":0},
-        "Diziler":{"done":0,"total":series_col.count_documents({}),"errors":0,"eta":"∞","cpu":0,"ram":0,"workers":0,"batch":0}
+        "Filmler":{"done":0,"total":movie_col.count_documents({}),"errors":0,"eta":"∞","cpu":cpu_film,"ram":ram_film,"workers":workers_film,"batch":batch_film},
+        "Diziler":{"done":0,"total":series_col.count_documents({}),"errors":0,"eta":"∞","cpu":cpu_series,"ram":ram_series,"workers":workers_series,"batch":batch_series}
     }
     last_text_holder = {"text":""}
     start_time = time.time()
