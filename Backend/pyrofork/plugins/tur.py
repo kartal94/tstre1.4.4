@@ -5,28 +5,16 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from Backend.helper.custom_filter import CustomFilters
 from pymongo import MongoClient, UpdateOne
 import os
-import importlib.util
 
 # -----------------------
 stop_event = asyncio.Event()
 
-CONFIG_PATH = "/home/debian/dfbot/config.env"
+# DATABASE sadece ortam değişkeninden okunacak
+db_raw = os.getenv("DATABASE", "")
+if not db_raw:
+    raise Exception("DATABASE ortam değişkeni bulunamadı!")
 
-def read_database_from_config():
-    if not os.path.exists(CONFIG_PATH):
-        return None
-    spec = importlib.util.spec_from_file_location("config", CONFIG_PATH)
-    config = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(config)
-    return getattr(config, "DATABASE", None)
-
-def get_db_urls():
-    db_raw = read_database_from_config()
-    if not db_raw:
-        db_raw = os.getenv("DATABASE", "")
-    return [u.strip() for u in db_raw.split(",") if u.strip()]
-
-db_urls = get_db_urls()
+db_urls = [u.strip() for u in db_raw.split(",") if u.strip()]
 if len(db_urls) < 2:
     raise Exception("İkinci DATABASE bulunamadı!")
 
@@ -85,7 +73,6 @@ async def tur_ve_platform_duzelt(client: Client, message):
     last_update = 0
 
     for col, name in collections:
-        # Tüm dökümanlar
         docs_cursor = col.find({}, {"_id": 1, "genres": 1, "telegram": 1, "seasons": 1})
         bulk_ops = []
 
@@ -97,7 +84,6 @@ async def tur_ve_platform_duzelt(client: Client, message):
             genres = doc.get("genres", [])
             updated = False
 
-            # --- Tür güncellemesi ---
             new_genres = []
             for g in genres:
                 if g in genre_map:
@@ -107,7 +93,6 @@ async def tur_ve_platform_duzelt(client: Client, message):
                     new_genres.append(g)
             genres = new_genres
 
-            # --- Platform güncellemesi ---
             for t in doc.get("telegram", []):
                 name_field = t.get("name", "").lower()
                 for key, genre_name in platform_genre_map.items():
