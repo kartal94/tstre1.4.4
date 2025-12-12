@@ -39,7 +39,7 @@ translator = GoogleTranslator(source='en', target='tr')
 def dynamic_config():
     cpu_count = multiprocessing.cpu_count()
     ram_percent = psutil.virtual_memory().percent
-    cpu_percent = psutil.cpu_percent(interval=0.5)
+    cpu_percent = psutil.cpu_percent(interval=None)  # Daha doğru anlık değer
 
     if cpu_percent < 30:
         workers = min(cpu_count * 2, 16)
@@ -133,11 +133,14 @@ async def safe_edit_message(message, text, reply_markup=None):
 def generate_progress_text(progress_data):
     text = "🇹🇷 Türkçe çeviri ilerlemesi\n\n"
     for name, data in progress_data.items():
+        # items/sec hesapla
+        elapsed_sec = max(1, sum(int(x) * t for x, t in zip([3600, 60, 1], map(int, data['elapsed'].split(":")))))
+        speed = data['done'] / elapsed_sec if elapsed_sec > 0 else 0
         text += (
             f"📌 {name}: {data['done']}/{data['total']}\n"
             f"{progress_bar(data['done'], data['total'])}\n"
             f"Kalan: {data['total'] - data['done']}, Hatalar: {data['errors']}\n"
-            f"Süre: {data['elapsed']} | ETA: {data['eta']}\n"
+            f"Süre: {data['elapsed']} | ETA: {data['eta']} | Hız: {speed:.2f} items/sec\n"
             f"CPU: {data['cpu']}% | RAM: {data['ram']}% | Workers: {data['workers']} | Batch: {data['batch']}\n\n"
         )
     return text
@@ -189,9 +192,8 @@ async def process_collection_parallel(collection, name, message, progress_data):
         idx += len(batch_ids)
 
         elapsed = time.time() - start_time
-        speed = done / elapsed if elapsed > 0 else 0
         remaining = total - done
-        eta = remaining / speed if speed > 0 else float("inf")
+        eta = remaining / (done / elapsed) if done > 0 else float("inf")
         eta_str = time.strftime("%H:%M:%S", time.gmtime(eta)) if math.isfinite(eta) else "∞"
         elapsed_str = time.strftime("%H:%M:%S", time.gmtime(elapsed))
 
@@ -210,7 +212,7 @@ async def process_collection_parallel(collection, name, message, progress_data):
             "batch": batch_size
         }
 
-        # Mesaj güncelleme süresi artık 15 saniye
+        # Mesaj güncelleme süresi 15 saniye
         if time.time() - last_update > 15 or idx >= len(ids):
             text = generate_progress_text(progress_data)
             await safe_edit_message(
