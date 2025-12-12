@@ -84,9 +84,11 @@ def translate_batch_worker(batch, stop_flag):
             break
         _id = doc.get("_id")
         upd = {}
+        
         desc = doc.get("description")
-        if desc:
+        if desc and str(desc).strip() != "":
             upd["description"] = translate_text_safe(desc, CACHE)
+
         seasons = doc.get("seasons")
         if seasons and isinstance(seasons, list):
             modified = False
@@ -95,6 +97,8 @@ def translate_batch_worker(batch, stop_flag):
                 for ep in eps:
                     if stop_flag.is_set():
                         break
+                    if not ep.get("title") and not ep.get("overview"):
+                        continue
                     if "title" in ep and ep["title"]:
                         ep["title"] = translate_text_safe(ep["title"], CACHE)
                         modified = True
@@ -103,6 +107,7 @@ def translate_batch_worker(batch, stop_flag):
                         modified = True
             if modified:
                 upd["seasons"] = seasons
+
         results.append((_id, upd))
     return results
 
