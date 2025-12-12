@@ -117,83 +117,6 @@ def translate_batch_worker(batch, stop_flag):
 
     return results
 
-# ------------ Paralel koleksiyon işleyici ------------
-async def process_collection_parallel(collection, name, message, update_interval=5):
-    loop = asyncio.get_event_loop()
-    total = collection.count_documents({})
-    done = 0
-    errors = 0
-    start_time = time.time()
-    last_update = 0
-
-    ids_cursor = collection.find({}, {"_id": 1})
-    ids = [d["_id"] for d in ids_cursor]
-
-    idx = 0
-    workers, batch_size = dynamic_config()
-    pool = ProcessPoolExecutor(max_workers=workers)
-
-    while idx < len(ids):
-        if stop_event.is_set():
-            break
-
-        batch_ids = ids[idx: idx + batch_size]
-        batch_docs = list(collection.find({"_id": {"$in": batch_ids}}))
-        if not batch_docs:
-            break
-
-        try:
-            future = loop.run_in_executor(pool, translate_batch_worker, batch_docs, stop_event)
-            results = await future
-        except Exception:
-            errors += len(batch_docs)
-            idx += len(batch_ids)
-            await asyncio.sleep(1)
-            continue
-
-        for _id, upd in results:
-            try:
-                if stop_event.is_set():
-                    break
-                if upd:
-                    collection.update_one({"_id": _id}, {"$set": upd})
-                done += 1
-            except Exception:
-                errors += 1
-
-        idx += len(batch_ids)
-
-        elapsed = time.time() - start_time
-        speed = done / elapsed if elapsed > 0 else 0
-        remaining = total - done
-        eta = remaining / speed if speed > 0 else float("inf")
-        eta_str = time.strftime("%H:%M:%S", time.gmtime(eta)) if math.isfinite(eta) else "∞"
-
-        cpu = psutil.cpu_percent(interval=None)
-        ram_percent = psutil.virtual_memory().percent
-        sys_info = f"CPU: {cpu}% | RAM: %{ram_percent}"
-
-        if time.time() - last_update > update_interval or idx >= len(ids):
-            text = (
-                f"{name}: {done}/{total}\n"
-                f"{progress_bar(done, total)}\n\n"
-                f"Kalan: {remaining}, Hatalar: {errors}\n"
-                f"Süre: {eta_str}\n"
-                f"{sys_info}"
-            )
-            try:
-                await message.edit_text(
-                    text,
-                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ İptal Et", callback_data="stop")]])
-                )
-            except:
-                pass
-            last_update = time.time()
-
-    pool.shutdown(wait=False)
-    elapsed_time = round(time.time() - start_time, 2)
-    return total, done, errors, elapsed_time
-
 # ------------ Callback: iptal butonu ------------
 async def handle_stop(callback_query: CallbackQuery):
     stop_event.set()
@@ -212,47 +135,116 @@ async def turkce_icerik(client: Client, message: Message):
     global stop_event
     stop_event.clear()
 
-    # --- Filmler için mesaj ---
-    movie_msg = await message.reply_text(
-        "🇹🇷 Filmler Türkçe çeviri hazırlanıyor...",
+    # Başlangıç mesajı (tek mesaj kullanılacak)
+    start_msg = await message.reply_text(
+        "🇹🇷 Türkçe çeviri hazırlanıyor...\nİlerleme tek mesajda gösterilecektir.",
         parse_mode=enums.ParseMode.MARKDOWN,
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ İptal Et", callback_data="stop")]])
     )
 
-    movie_total, movie_done, movie_errors, movie_time = await process_collection_parallel(
-        movie_col, "Filmler", movie_msg, update_interval=5
-    )
+    # Koleksiyon listeleri ve sayaçları
+    collections = [
+        {"col": movie_col, "name": "Filmler", "total": 0, "done": 0, "errors": 0},
+        {"col": series_col, "name": "Diziler", "total": 0, "done": 0, "errors": 0}
+    ]
 
-    # --- Diziler için mesaj ---
-    series_msg = await message.reply_text(
-        "🇹🇷 Diziler Türkçe çeviri hazırlanıyor...",
-        parse_mode=enums.ParseMode.MARKDOWN,
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ İptal Et", callback_data="stop")]])
-    )
+    for c in collections:
+        c["total"] = c["col"].count_documents({})
 
-    series_total, series_done, series_errors, series_time = await process_collection_parallel(
-        series_col, "Diziler", series_msg, update_interval=5
-    )
+    start_time = time.time()
+    last_update = 0
+    update_interval = 5  # 5 saniyede bir güncelle
 
-    # --- Genel Özet ---
-    total_all = movie_total + series_total
-    done_all = movie_done + series_done
-    errors_all = movie_errors + series_errors
-    remaining_all = total_all - done_all
-    total_time = round(movie_time + series_time, 2)
+    # Koleksiyonları sırayla çevir
+    for c in collections:
+        col = c["col"]
+        name = c["name"]
+        total = c["total"]
+        done = 0
+        errors = 0
 
-    hours, rem = divmod(total_time, 3600)
-    minutes, seconds = divmod(rem, 60)
-    eta_str = f"{int(hours)}s{int(minutes)}d{int(seconds)}s"
+        ids_cursor = col.find({}, {"_id": 1})
+        ids = [d["_id"] for d in ids_cursor]
 
-    summary = (
-        "🎉 Türkçe Çeviri Sonuçları\n\n"
-        f"📌 Filmler: {movie_done}/{movie_total}\n{progress_bar(movie_done, movie_total)}\nKalan: {movie_total - movie_done}, Hatalar: {movie_errors}\n\n"
-        f"📌 Diziler: {series_done}/{series_total}\n{progress_bar(series_done, series_total)}\nKalan: {series_total - series_done}, Hatalar: {series_errors}\n\n"
-        f"📊 Genel Özet\nToplam içerik : {total_all}\nBaşarılı     : {done_all - errors_all}\nHatalı       : {errors_all}\nKalan        : {remaining_all}\nToplam süre  : {eta_str}\n"
-    )
+        idx = 0
+        workers, batch_size = dynamic_config()
+        pool = ProcessPoolExecutor(max_workers=workers)
+
+        while idx < len(ids):
+            if stop_event.is_set():
+                break
+
+            batch_ids = ids[idx: idx + batch_size]
+            batch_docs = list(col.find({"_id": {"$in": batch_ids}}))
+            if not batch_docs:
+                break
+
+            try:
+                loop = asyncio.get_event_loop()
+                future = loop.run_in_executor(pool, translate_batch_worker, batch_docs, stop_event)
+                results = await future
+            except Exception:
+                errors += len(batch_docs)
+                idx += len(batch_ids)
+                await asyncio.sleep(1)
+                continue
+
+            for _id, upd in results:
+                try:
+                    if stop_event.is_set():
+                        break
+                    if upd:
+                        col.update_one({"_id": _id}, {"$set": upd})
+                    done += 1
+                except Exception:
+                    errors += 1
+
+            idx += len(batch_ids)
+            c["done"] = done
+            c["errors"] = errors
+
+            # Tek mesaj güncellemesi
+            if time.time() - last_update > update_interval or idx >= len(ids):
+                text = ""
+                total_done = 0
+                total_all = 0
+                total_errors = 0
+
+                for col_summary in collections:
+                    text += (
+                        f"📌 {col_summary['name']}: {col_summary['done']}/{col_summary['total']}\n"
+                        f"{progress_bar(col_summary['done'], col_summary['total'])}\n"
+                        f"Kalan: {col_summary['total'] - col_summary['done']}, Hatalar: {col_summary['errors']}\n\n"
+                    )
+                    total_done += col_summary['done']
+                    total_all += col_summary['total']
+                    total_errors += col_summary['errors']
+
+                remaining_all = total_all - total_done
+                elapsed_time = time.time() - start_time
+                text += f"⏱ Süre: {round(elapsed_time,2)} sn | Kalan toplam: {remaining_all} | Hatalar toplam: {total_errors}"
+
+                try:
+                    await start_msg.edit_text(
+                        text,
+                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ İptal Et", callback_data="stop")]])
+                    )
+                except:
+                    pass
+                last_update = time.time()
+
+        pool.shutdown(wait=False)
+
+    # Son özet mesajı
+    final_text = "🎉 Türkçe Çeviri Tamamlandı!\n\n"
+    for col_summary in collections:
+        final_text += (
+            f"📌 {col_summary['name']}: {col_summary['done']}/{col_summary['total']}\n"
+            f"{progress_bar(col_summary['done'], col_summary['total'])}\n"
+            f"Kalan: {col_summary['total'] - col_summary['done']}, Hatalar: {col_summary['errors']}\n\n"
+        )
     try:
-        await message.reply_text(summary, parse_mode=enums.ParseMode.MARKDOWN)
+        await start_msg.edit_text(final_text)
     except:
         pass
 
