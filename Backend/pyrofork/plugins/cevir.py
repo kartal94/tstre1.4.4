@@ -2,20 +2,21 @@ import asyncio
 from pyrogram import Client, filters, enums
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from pymongo import MongoClient
-from deep_translator import GoogleTranslator
+from deep_translator import GoogleTranslator, exceptions as gt_exceptions
 import multiprocessing
 from concurrent.futures import ProcessPoolExecutor
 import psutil
 import time
 import math
 import os
+from pyrogram.errors import FloodWait
 
 from Backend.helper.custom_filter import CustomFilters  # Owner filtresi için
 
 # GLOBAL STOP EVENT
 stop_event = asyncio.Event()
 
-# ------------ DATABASE Bağlantısı (Sadece ortam değişkeni) ------------
+# ------------ DATABASE Bağlantısı ------------
 db_raw = os.getenv("DATABASE", "")
 if not db_raw:
     raise Exception("DATABASE ortam değişkeni bulunamadı!")
@@ -59,17 +60,26 @@ def dynamic_config():
     return workers, batch
 
 # ------------ Güvenli Çeviri Fonksiyonu ------------
-def translate_text_safe(text, cache):
+def translate_text_safe(text, cache, max_retries=3):
     if not text or str(text).strip() == "":
         return ""
     if text in cache:
         return cache[text]
-    try:
-        tr = GoogleTranslator(source='en', target='tr').translate(text)
-    except Exception:
-        tr = text
-    cache[text] = tr
-    return tr
+
+    attempt = 0
+    while attempt < max_retries:
+        try:
+            tr = GoogleTranslator(source='en', target='tr').translate(text)
+            cache[text] = tr
+            return tr
+        except (gt_exceptions.RequestError, gt_exceptions.NotValidPayload, gt_exceptions.ServerError):
+            attempt += 1
+            time.sleep(1 + attempt)
+        except Exception:
+            break
+
+    cache[text] = text
+    return text
 
 # ------------ Progress Bar ------------
 def progress_bar(current, total, bar_length=12):
@@ -80,13 +90,15 @@ def progress_bar(current, total, bar_length=12):
     bar = "⬢" * filled_length + "⬡" * (bar_length - filled_length)
     return f"[{bar}] {percent:.2f}%"
 
-# ------------ Worker: batch çevirici ------------
-def translate_batch_worker(batch, stop_flag):
+# ------------ Worker: batch çevirici (API limiti ile) ------------
+def translate_batch_worker(batch, stop_flag, max_api_per_batch=20):
     CACHE = {}
     results = []
+    last_translated = []
 
+    processed_count = 0
     for doc in batch:
-        if stop_flag.is_set():
+        if stop_flag.is_set() or processed_count >= max_api_per_batch:
             break
 
         _id = doc.get("_id")
@@ -95,6 +107,11 @@ def translate_batch_worker(batch, stop_flag):
         desc = doc.get("description")
         if desc:
             upd["description"] = translate_text_safe(desc, CACHE)
+            processed_count += 1
+            last_translated.append(desc)
+            if processed_count >= max_api_per_batch:
+                results.append((_id, upd, last_translated))
+                break
 
         seasons = doc.get("seasons")
         if seasons and isinstance(seasons, list):
@@ -102,29 +119,47 @@ def translate_batch_worker(batch, stop_flag):
             for season in seasons:
                 eps = season.get("episodes", []) or []
                 for ep in eps:
-                    if stop_flag.is_set():
+                    if stop_flag.is_set() or processed_count >= max_api_per_batch:
                         break
                     if "title" in ep and ep["title"]:
+                        last_translated.append(ep["title"])
                         ep["title"] = translate_text_safe(ep["title"], CACHE)
-                        modified = True
+                        processed_count += 1
                     if "overview" in ep and ep["overview"]:
+                        last_translated.append(ep["overview"])
                         ep["overview"] = translate_text_safe(ep["overview"], CACHE)
-                        modified = True
+                        processed_count += 1
+                    modified = True
+                    if processed_count >= max_api_per_batch:
+                        break
             if modified:
                 upd["seasons"] = seasons
 
-        results.append((_id, upd))
+        results.append((_id, upd, last_translated))
+        last_translated = []
 
     return results
 
+# ------------ Telegram edit_text için FloodWait yönetimi ------------
+async def safe_edit_text(message, text, reply_markup=None):
+    while True:
+        try:
+            await message.edit_text(text, reply_markup=reply_markup)
+            break
+        except FloodWait as e:
+            await asyncio.sleep(e.x)
+        except Exception:
+            break
+
 # ------------ Paralel koleksiyon işleyici ------------
-async def process_collection_parallel(collection, name, message):
+async def process_collection_parallel(collection, name, message, max_api_per_batch=20):
     loop = asyncio.get_event_loop()
     total = collection.count_documents({})
     done = 0
     errors = 0
     start_time = time.time()
     last_update = 0
+    last_translated_batch = []
 
     ids_cursor = collection.find({}, {"_id": 1})
     ids = [d["_id"] for d in ids_cursor]
@@ -143,7 +178,7 @@ async def process_collection_parallel(collection, name, message):
             break
 
         try:
-            future = loop.run_in_executor(pool, translate_batch_worker, batch_docs, stop_event)
+            future = loop.run_in_executor(pool, translate_batch_worker, batch_docs, stop_event, max_api_per_batch)
             results = await future
         except Exception:
             errors += len(batch_docs)
@@ -151,13 +186,15 @@ async def process_collection_parallel(collection, name, message):
             await asyncio.sleep(1)
             continue
 
-        for _id, upd in results:
+        for _id, upd, last_translated in results:
             try:
                 if stop_event.is_set():
                     break
                 if upd:
                     collection.update_one({"_id": _id}, {"$set": upd})
                 done += 1
+                if last_translated:
+                    last_translated_batch.extend(last_translated)
             except Exception:
                 errors += 1
 
@@ -173,7 +210,7 @@ async def process_collection_parallel(collection, name, message):
         ram_percent = psutil.virtual_memory().percent
         sys_info = f"CPU: {cpu}% | RAM: %{ram_percent}"
 
-        if time.time() - last_update > 30 or idx >= len(ids):
+        if time.time() - last_update > 15 or idx >= len(ids):
             text = (
                 f"{name}: {done}/{total}\n"
                 f"{progress_bar(done, total)}\n\n"
@@ -181,14 +218,15 @@ async def process_collection_parallel(collection, name, message):
                 f"Süre: {eta_str}\n"
                 f"{sys_info}"
             )
-            try:
-                await message.edit_text(
-                    text,
-                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ İptal Et", callback_data="stop")]])
-                )
-            except:
-                pass
+            if last_translated_batch:
+                text += "\n\nSon çevrilen içerikler:\n" + "\n".join(f"- {t}" for t in last_translated_batch[:5])
+            await safe_edit_text(
+                message,
+                text,
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ İptal Et", callback_data="stop")]])
+            )
             last_update = time.time()
+            last_translated_batch = []
 
     pool.shutdown(wait=False)
     elapsed_time = round(time.time() - start_time, 2)
@@ -198,7 +236,7 @@ async def process_collection_parallel(collection, name, message):
 async def handle_stop(callback_query: CallbackQuery):
     stop_event.set()
     try:
-        await callback_query.message.edit_text("⛔ İşlem iptal edildi!")
+        await safe_edit_text(callback_query.message, "⛔ İşlem iptal edildi!")
     except:
         pass
     try:
@@ -219,11 +257,11 @@ async def turkce_icerik(client: Client, message: Message):
     )
 
     movie_total, movie_done, movie_errors, movie_time = await process_collection_parallel(
-        movie_col, "Filmler", start_msg
+        movie_col, "Filmler", start_msg, max_api_per_batch=20
     )
 
     series_total, series_done, series_errors, series_time = await process_collection_parallel(
-        series_col, "Diziler", start_msg
+        series_col, "Diziler", start_msg, max_api_per_batch=20
     )
 
     total_all = movie_total + series_total
@@ -242,10 +280,7 @@ async def turkce_icerik(client: Client, message: Message):
         f"📌 Diziler: {series_done}/{series_total}\n{progress_bar(series_done, series_total)}\nKalan: {series_total - series_done}, Hatalar: {series_errors}\n\n"
         f"📊 Genel Özet\nToplam içerik : {total_all}\nBaşarılı     : {done_all - errors_all}\nHatalı       : {errors_all}\nKalan        : {remaining_all}\nToplam süre  : {eta_str}\n"
     )
-    try:
-        await start_msg.edit_text(summary, parse_mode=enums.ParseMode.MARKDOWN)
-    except:
-        pass
+    await safe_edit_text(start_msg, summary, reply_markup=None)
 
 # ------------ Callback query handler ------------
 @Client.on_callback_query()
