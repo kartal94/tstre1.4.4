@@ -206,7 +206,7 @@ async def process_collection_parallel(collection, name, message, progress_data, 
                 update_now = False
                 if done % 5 == 0 or idx + len(batch_ids) >= len(ids):
                     elapsed_since_last = time.time() - last_update
-                    if elapsed_since_last >= 15 or elapsed_since_last > 20:
+                    if 15 <= elapsed_since_last <= 20:
                         update_now = True
 
                 if update_now:
@@ -273,10 +273,15 @@ async def turkce_icerik(client: Client, message: Message):
     await process_collection_parallel(movie_col, "Filmler", start_msg, progress_data, last_text_holder, start_time)
     await process_collection_parallel(series_col, "Diziler", start_msg, progress_data, last_text_holder, start_time)
 
-    # Final summary
-    elapsed = time.time() - start_time
-    final_text = generate_final_summary(progress_data, elapsed)
-    await safe_edit_message(start_msg, final_text)
+    # Final ekranı: kalan 0 olduğunda üret
+    total_all = sum(progress_data[name]["total"] for name in progress_data)
+    done_all = sum(progress_data[name]["done"] for name in progress_data)
+    remaining_all = total_all - done_all
+
+    if remaining_all == 0:
+        elapsed = time.time() - start_time
+        final_text = generate_final_summary(progress_data, elapsed)
+        await safe_edit_message(start_msg, final_text)
 
 # CALLBACK
 @Client.on_callback_query()
