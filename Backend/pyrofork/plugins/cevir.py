@@ -118,16 +118,46 @@ async def safe_edit_message(message, text, reply_markup=None):
 def generate_progress_text(progress_data, elapsed_str):
     text = "🇹🇷 Türkçe çeviri ilerlemesi\n\n"
     for name, data in progress_data.items():
-        speed = data['done'] / max(1, sum(int(x) * t for x, t in zip([3600,60,1], map(int, elapsed_str.split(":")))))
+        speed = data['done'] / max(1, sum(int(x)*t for x,t in zip([3600,60,1], map(int, elapsed_str.split(":")))))
         progress_line = f"{progress_bar(data['done'], data['total'])}\n"
         text += (
             f"📌 {name}: {data['done']}/{data['total']}\n"
             f"{progress_line}"
-            f"Kalan: {data['total'] - data['done']}, Hatalar: {data['errors']}\n"
+            f"Kalan: {data['total']-data['done']}, Hatalar: {data['errors']}\n"
             f"ETA: {data['eta']} | Hız: {speed:.2f} items/sec\n\n"
         )
     text += f"Süre: {elapsed_str}\n"
     text += f"CPU: {progress_data['Filmler']['cpu']}% | RAM: {progress_data['Filmler']['ram']}% | Workers: {progress_data['Filmler']['workers']} | Batch: {progress_data['Filmler']['batch']}"
+    return text
+
+def generate_final_summary(progress_data, elapsed_seconds):
+    hours, rem = divmod(int(elapsed_seconds), 3600)
+    minutes, seconds = divmod(rem, 60)
+    elapsed_str = f"{hours}h {minutes}m {seconds}s"
+
+    total_all = sum(progress_data[name]["total"] for name in progress_data)
+    done_all = sum(progress_data[name]["done"] for name in progress_data)
+    errors_all = sum(progress_data[name]["errors"] for name in progress_data)
+    remaining_all = total_all - done_all
+
+    text = "🎉 Türkçe Çeviri Sonuçları\n\n"
+
+    for name in ["Filmler","Diziler"]:
+        data = progress_data[name]
+        text += (
+            f"📌 {name}: {data['done']}/{data['total']}\n"
+            f"{progress_bar(data['done'], data['total'])}\n"
+            f"Kalan: {data['total']-data['done']}, Hatalar: {data['errors']}\n\n"
+        )
+
+    text += (
+        "📊 Genel Özet\n"
+        f"Toplam içerik : {total_all}\n"
+        f"Başarılı     : {done_all - errors_all}\n"
+        f"Hatalı       : {errors_all}\n"
+        f"Kalan        : {remaining_all}\n"
+        f"Toplam süre  : {elapsed_str}\n"
+    )
     return text
 
 async def process_collection_parallel(collection, name, message, progress_data, last_text_holder, start_time):
@@ -145,8 +175,8 @@ async def process_collection_parallel(collection, name, message, progress_data, 
     while idx < len(ids):
         if stop_event.is_set():
             break
-        batch_ids = ids[idx: idx + batch_size]
-        batch_docs = list(collection.find({"_id":{"$in": batch_ids}}))
+        batch_ids = ids[idx: idx+batch_size]
+        batch_docs = list(collection.find({"_id":{"$in":batch_ids}}))
         if not batch_docs:
             break
         try:
@@ -164,11 +194,11 @@ async def process_collection_parallel(collection, name, message, progress_data, 
                     break
                 if upd:
                     collection.update_one({"_id":_id}, {"$set":upd})
-                done +=1
+                done += 1
 
-                # Güncelleme koşulları: her 5 içerik + 15-20s aralığı
+                # Güncelleme koşulları: her 1 içerik + 15-20s aralığı
                 update_now = False
-                if done % 5 ==0 or idx + len(batch_ids) >= len(ids):
+                if done % 1 == 0 or idx + len(batch_ids) >= len(ids):
                     elapsed_since_last = time.time() - last_update
                     if elapsed_since_last >= 15 or elapsed_since_last > 20:
                         update_now = True
@@ -177,7 +207,7 @@ async def process_collection_parallel(collection, name, message, progress_data, 
                     elapsed = time.time() - start_time
                     elapsed_str = time.strftime("%H:%M:%S", time.gmtime(elapsed))
                     remaining = total - done
-                    eta = remaining / (done / elapsed) if done>0 else float("inf")
+                    eta = remaining / (done/elapsed) if done>0 else float("inf")
                     eta_str = time.strftime("%H:%M:%S", time.gmtime(eta)) if math.isfinite(eta) else "∞"
                     _, _, cpu_percent, ram_percent = dynamic_config(name)
                     progress_data[name] = {
@@ -197,7 +227,7 @@ async def process_collection_parallel(collection, name, message, progress_data, 
                         last_text_holder["text"] = new_text
                         last_update = time.time()
             except Exception:
-                errors +=1
+                errors += 1
         idx += len(batch_ids)
 
     pool.shutdown(wait=False)
@@ -235,10 +265,9 @@ async def turkce_icerik(client: Client, message: Message):
     await process_collection_parallel(movie_col, "Filmler", start_msg, progress_data, last_text_holder, start_time)
     await process_collection_parallel(series_col, "Diziler", start_msg, progress_data, last_text_holder, start_time)
 
-    # Son güncelleme
+    # Sonuç ekranı
     elapsed = time.time() - start_time
-    elapsed_str = time.strftime("%H:%M:%S", time.gmtime(elapsed))
-    final_text = generate_progress_text(progress_data, elapsed_str)
+    final_text = generate_final_summary(progress_data, elapsed)
     await safe_edit_message(start_msg, final_text)
 
 @Client.on_callback_query()
