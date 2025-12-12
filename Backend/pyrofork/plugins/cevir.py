@@ -9,31 +9,18 @@ import psutil
 import time
 import math
 import os
-import importlib.util
 
 from Backend.helper.custom_filter import CustomFilters  # Owner filtresi için
 
 # GLOBAL STOP EVENT
 stop_event = asyncio.Event()
 
-# ------------ DATABASE Bağlantısı ------------
-CONFIG_PATH = "/home/debian/dfbot/config.env"
+# ------------ DATABASE Bağlantısı (Sadece ortam değişkeni) ------------
+db_raw = os.getenv("DATABASE", "")
+if not db_raw:
+    raise Exception("DATABASE ortam değişkeni bulunamadı!")
 
-def read_database_from_config():
-    if not os.path.exists(CONFIG_PATH):
-        return None
-    spec = importlib.util.spec_from_file_location("config", CONFIG_PATH)
-    config = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(config)
-    return getattr(config, "DATABASE", None)
-
-def get_db_urls():
-    db_raw = read_database_from_config()
-    if not db_raw:
-        db_raw = os.getenv("DATABASE", "")
-    return [u.strip() for u in db_raw.split(",") if u.strip()]
-
-db_urls = get_db_urls()
+db_urls = [u.strip() for u in db_raw.split(",") if u.strip()]
 if len(db_urls) < 2:
     raise Exception("İkinci DATABASE bulunamadı!")
 
@@ -105,12 +92,10 @@ def translate_batch_worker(batch, stop_flag):
         _id = doc.get("_id")
         upd = {}
 
-        # Açıklama çevirisi
         desc = doc.get("description")
         if desc:
             upd["description"] = translate_text_safe(desc, CACHE)
 
-        # Sezon / bölüm çevirisi
         seasons = doc.get("seasons")
         if seasons and isinstance(seasons, list):
             modified = False
@@ -128,8 +113,6 @@ def translate_batch_worker(batch, stop_flag):
             if modified:
                 upd["seasons"] = seasons
 
-        # ❌ genres artık çevrilmiyor — tamamen kaldırıldı
-
         results.append((_id, upd))
 
     return results
@@ -145,8 +128,8 @@ async def process_collection_parallel(collection, name, message):
 
     ids_cursor = collection.find({}, {"_id": 1})
     ids = [d["_id"] for d in ids_cursor]
-    idx = 0
 
+    idx = 0
     workers, batch_size = dynamic_config()
     pool = ProcessPoolExecutor(max_workers=workers)
 
@@ -203,7 +186,7 @@ async def process_collection_parallel(collection, name, message):
                     text,
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ İptal Et", callback_data="stop")]])
                 )
-            except Exception:
+            except:
                 pass
             last_update = time.time()
 
