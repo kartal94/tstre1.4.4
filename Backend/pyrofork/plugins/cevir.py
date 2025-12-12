@@ -282,8 +282,8 @@ async def turkce_icerik(client: Client, message: Message):
                     elapsed_time = time.time() - start_time
 
                     text += (
-                        f"⏱ Süre: `{round(elapsed_time, 2)}` sn | Kalan toplam: `{remaining_all}`\n"
-                        f"💻 CPU: `{cpu}%` | RAM: `{ram_percent}%`"
+                        f" Süre: `{round(elapsed_time, 2)}` sn | Kalan: `{remaining_all}`\n"
+                        f" CPU: `{cpu}%` | RAM: `{ram_percent}%`"
                     )
 
                     try:
