@@ -1,4 +1,4 @@
-import asyncio 
+import asyncio
 from pyrogram import Client, filters, enums
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from pymongo import MongoClient
@@ -90,7 +90,7 @@ def progress_bar(current, total, bar_length=12):
     bar = "⬢" * filled_length + "⬡" * (bar_length - filled_length)
     return f"[{bar}] {percent:.2f}%"
 
-# ------------ Worker: batch çevirici (limit kaldırıldı) ------------
+# ------------ Worker: batch çevirici ------------
 def translate_batch_worker(batch, stop_flag):
     CACHE = {}
     results = []
@@ -115,12 +115,14 @@ def translate_batch_worker(batch, stop_flag):
             modified = False
             for season in seasons:
                 eps = season.get("episodes", []) or []
-                for ep in eps:
+                # Episode sırasını DB’deki index ile sağlıyoruz
+                for idx, ep in enumerate(eps, start=1):
                     if stop_flag.is_set():
                         break
-                    ep_title = ep.get("title")
-                    ep_number = ep.get("episode_number", "")
-                    season_number = season.get("season_number", "")
+                    ep_title = ep.get("title") or f"Episode {idx}"
+                    ep_number = ep.get("episode_number") or idx
+                    season_number = season.get("season_number") or 0
+
                     if ep_title:
                         ep["title"] = translate_text_safe(ep_title, CACHE)
                         formatted_name = f"{doc.get('title','Unknown')} S{season_number:02}E{ep_number:02}"
