@@ -11,7 +11,7 @@ import os
 
 from Backend.helper.custom_filter import CustomFilters  # Owner filtresi için
 
-# ------------ GLOBAL STOP EVENT ------------
+# GLOBAL STOP EVENT
 stop_event = multiprocessing.Event()
 
 # ------------ DATABASE Bağlantısı ------------
@@ -42,9 +42,9 @@ def dynamic_config():
     if cpu_percent < 30:
         workers = min(cpu_count * 2, 16)
     elif cpu_percent < 60:
-        workers = max(1, cpu_count)
+        workers = max(2, cpu_count)  # minimum 2 worker
     else:
-        workers = max(2, 4)  # minimum 2-4 worker
+        workers = 2
 
     if ram_percent < 40:
         batch = 80
@@ -79,7 +79,7 @@ def progress_bar(current, total, bar_length=12):
     bar = "⬢" * filled_length + "⬡" * (bar_length - filled_length)
     return f"[{bar}] {percent:.2f}%"
 
-# ------------ Batch Çevirici Worker ------------
+# ------------ Worker: batch çevirici ------------
 def translate_batch_worker(batch, stop_flag):
     CACHE = {}
     results = []
@@ -116,8 +116,20 @@ def translate_batch_worker(batch, stop_flag):
 
     return results
 
-# ------------ Progress Güncelleme Fonksiyonu ------------
-async def update_progress(msg, collections, start_time):
+# ------------ Callback: iptal butonu ------------
+async def handle_stop(callback_query: CallbackQuery):
+    stop_event.set()
+    try:
+        await callback_query.message.edit_text("⛔ İşlem iptal edildi!")
+    except:
+        pass
+    try:
+        await callback_query.answer("Durdurma talimatı alındı.")
+    except:
+        pass
+
+# ------------ Progress bar güncelleme fonksiyonu ------------
+async def update_progress(message, collections, start_time):
     text = ""
     total_done = 0
     total_all = 0
@@ -143,22 +155,10 @@ async def update_progress(msg, collections, start_time):
     )
 
     try:
-        await msg.edit_text(
+        await message.edit_text(
             text,
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ İptal Et", callback_data="stop")]])
         )
-    except:
-        pass
-
-# ------------ Callback: İptal Butonu ------------
-async def handle_stop(callback_query: CallbackQuery):
-    stop_event.set()
-    try:
-        await callback_query.message.edit_text("⛔ İşlem iptal edildi!")
-    except:
-        pass
-    try:
-        await callback_query.answer("Durdurma talimatı alındı.")
     except:
         pass
 
@@ -176,18 +176,19 @@ async def turkce_icerik(client: Client, message: Message):
 
     collections = [
         {"col": movie_col, "name": "Filmler", "total": 0, "done": 0, "errors": 0},
-        {"col": series_col, "name": "Diziler", "total": 0, "done": 0, "errors": 0}  # Diziler ikinci
+        {"col": series_col, "name": "Diziler", "total": 0, "done": 0, "errors": 0}
     ]
 
-    # Toplam doküman sayısı
     for c in collections:
         c["total"] = c["col"].count_documents({})
 
     start_time = time.time()
     update_interval = 5
 
-    # Koleksiyonları sırayla çevir
     for c in collections:
+        if stop_event.is_set():
+            break
+
         col = c["col"]
         name = c["name"]
         total = c["total"]
@@ -200,7 +201,7 @@ async def turkce_icerik(client: Client, message: Message):
         idx = 0
         workers, batch_size = dynamic_config()
 
-        # Her koleksiyon için ayrı pool
+        # Pool koleksiyon başına
         with ProcessPoolExecutor(max_workers=workers) as pool:
             last_update = 0
             while idx < len(ids):
@@ -210,9 +211,9 @@ async def turkce_icerik(client: Client, message: Message):
                 batch_ids = ids[idx: idx + batch_size]
                 batch_docs = list(col.find({"_id": {"$in": batch_ids}}))
 
+                loop = asyncio.get_running_loop()
+                future = loop.run_in_executor(pool, translate_batch_worker, batch_docs, stop_event)
                 try:
-                    loop = asyncio.get_running_loop()
-                    future = loop.run_in_executor(pool, translate_batch_worker, batch_docs, stop_event)
                     results = await future
                 except Exception:
                     errors += len(batch_docs)
@@ -232,13 +233,14 @@ async def turkce_icerik(client: Client, message: Message):
                 c["done"] = done
                 c["errors"] = errors
 
-                # Progress bar güncelleme
+                # Progress bar güncelle
                 if time.time() - last_update > update_interval or idx >= len(ids):
                     await update_progress(start_msg, collections, start_time)
                     last_update = time.time()
 
     # ------------ SONUÇ EKRANI ------------
     final_text = "🎉 Türkçe Çeviri Sonuçları\n\n"
+
     for col_summary in collections:
         final_text += (
             f"📌 {col_summary['name']}: {col_summary['done']}/{col_summary['total']}\n"
