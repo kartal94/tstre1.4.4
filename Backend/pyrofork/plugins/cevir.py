@@ -1,83 +1,7 @@
-import asyncio
-from pyrogram import Client, filters, enums
-from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-from pymongo import MongoClient
-from deep_translator import GoogleTranslator
 import multiprocessing
-from concurrent.futures import ProcessPoolExecutor
-import psutil
-import time
-import os
 
-from Backend.helper.custom_filter import CustomFilters  # Owner filtresi için
-
-# GLOBAL STOP EVENT (multiprocessing.Event ile uyumlu)
+# GLOBAL STOP EVENT (multiprocessing uyumlu)
 stop_event = multiprocessing.Event()
-
-# ------------ DATABASE Bağlantısı ------------
-db_raw = os.getenv("DATABASE", "")
-if not db_raw:
-    raise Exception("DATABASE ortam değişkeni bulunamadı!")
-
-db_urls = [u.strip() for u in db_raw.split(",") if u.strip()]
-if len(db_urls) < 2:
-    raise Exception("İkinci DATABASE bulunamadı!")
-
-MONGO_URL = db_urls[1]
-client_db = MongoClient(MONGO_URL)
-db_name = client_db.list_database_names()[0]
-db = client_db[db_name]
-
-movie_col = db["movie"]
-series_col = db["tv"]
-
-translator = GoogleTranslator(source='en', target='tr')
-
-# ------------ Dinamik Worker & Batch Ayarı ------------
-def dynamic_config():
-    cpu_count = multiprocessing.cpu_count()
-    ram_percent = psutil.virtual_memory().percent
-    cpu_percent = psutil.cpu_percent(interval=0.5)
-
-    if cpu_percent < 30:
-        workers = min(cpu_count * 2, 16)
-    elif cpu_percent < 60:
-        workers = max(1, cpu_count)
-    else:
-        workers = 1
-
-    if ram_percent < 40:
-        batch = 80
-    elif ram_percent < 60:
-        batch = 40
-    elif ram_percent < 75:
-        batch = 20
-    else:
-        batch = 10
-
-    return workers, batch
-
-# ------------ Güvenli Çeviri Fonksiyonu ------------
-def translate_text_safe(text, cache):
-    if not text or str(text).strip() == "":
-        return ""
-    if text in cache:
-        return cache[text]
-    try:
-        tr = GoogleTranslator(source='en', target='tr').translate(text)
-    except Exception:
-        tr = text
-    cache[text] = tr
-    return tr
-
-# ------------ Progress Bar ------------
-def progress_bar(current, total, bar_length=12):
-    if total == 0:
-        return "[⬡" + "⬡"*(bar_length-1) + "] 0.00%"
-    percent = (current / total) * 100
-    filled_length = int(bar_length * current // total)
-    bar = "⬢" * filled_length + "⬡" * (bar_length - filled_length)
-    return f"[{bar}] {percent:.2f}%"
 
 # ------------ Worker: batch çevirici ------------
 def translate_batch_worker(batch, stop_flag):
@@ -91,12 +15,10 @@ def translate_batch_worker(batch, stop_flag):
         _id = doc.get("_id")
         upd = {}
 
-        # Description
         desc = doc.get("description")
         if desc:
             upd["description"] = translate_text_safe(desc, CACHE)
 
-        # Seasons / Episodes
         seasons = doc.get("seasons")
         if seasons and isinstance(seasons, list):
             modified = False
@@ -111,24 +33,12 @@ def translate_batch_worker(batch, stop_flag):
                     if "overview" in ep and ep["overview"]:
                         ep["overview"] = translate_text_safe(ep["overview"], CACHE)
                         modified = True
-            if modified:
-                upd["seasons"] = seasons
+            # Sezonları her durumda ekle (boş olsa da) ki update çalışsın
+            upd["seasons"] = seasons
 
         results.append((_id, upd))
 
     return results
-
-# ------------ Callback: iptal butonu ------------
-async def handle_stop(callback_query: CallbackQuery):
-    stop_event.set()
-    try:
-        await callback_query.message.edit_text("⛔ İşlem iptal edildi!")
-    except:
-        pass
-    try:
-        await callback_query.answer("Durdurma talimatı alındı.")
-    except:
-        pass
 
 # ------------ /cevir Komutu (Sadece owner) ------------
 @Client.on_message(filters.command("cevir") & filters.private & CustomFilters.owner)
@@ -152,7 +62,7 @@ async def turkce_icerik(client: Client, message: Message):
 
     start_time = time.time()
     last_update = 0
-    update_interval = 5
+    update_interval = 3  # daha sık güncelleme
 
     for c in collections:
         col = c["col"]
@@ -166,7 +76,8 @@ async def turkce_icerik(client: Client, message: Message):
 
         idx = 0
         workers, batch_size = dynamic_config()
-        pool = ProcessPoolExecutor(max_workers=workers)
+        batch_size = min(batch_size, 20)  # güvenli batch boyutu
+        pool = multiprocessing.get_context("spawn").Pool(workers)
 
         while idx < len(ids):
             if stop_event.is_set():
@@ -176,9 +87,7 @@ async def turkce_icerik(client: Client, message: Message):
             batch_docs = list(col.find({"_id": {"$in": batch_ids}}))
 
             try:
-                loop = asyncio.get_event_loop()
-                future = loop.run_in_executor(pool, translate_batch_worker, batch_docs, stop_event)
-                results = await future
+                results = pool.apply(translate_batch_worker, args=(batch_docs, stop_event))
             except Exception:
                 errors += len(batch_docs)
                 idx += len(batch_ids)
@@ -189,7 +98,7 @@ async def turkce_icerik(client: Client, message: Message):
                 try:
                     if upd:
                         col.update_one({"_id": _id}, {"$set": upd})
-                    done += 1  # artık her doküman için artırılıyor
+                    done += 1  # her doküman için done artır
                 except:
                     errors += 1
 
@@ -197,7 +106,7 @@ async def turkce_icerik(client: Client, message: Message):
             c["done"] = done
             c["errors"] = errors
 
-            # 🔥 Tek Mesaj Güncellemesi
+            # Tek Mesaj Güncellemesi
             if time.time() - last_update > update_interval or idx >= len(ids):
                 text = ""
                 total_done = 0
@@ -232,7 +141,8 @@ async def turkce_icerik(client: Client, message: Message):
                     pass
                 last_update = time.time()
 
-        pool.shutdown(wait=False)
+        pool.close()
+        pool.join()
 
     # ------------ SONUÇ EKRANI ------------
     final_text = "🎉 Türkçe Çeviri Sonuçları\n\n"
@@ -267,9 +177,3 @@ async def turkce_icerik(client: Client, message: Message):
         await start_msg.edit_text(final_text)
     except:
         pass
-
-# ------------ Callback query handler ------------
-@Client.on_callback_query()
-async def _cb(client: Client, query: CallbackQuery):
-    if query.data == "stop":
-        await handle_stop(query)
