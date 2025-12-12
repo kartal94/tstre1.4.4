@@ -133,17 +133,12 @@ async def safe_edit_message(message, text, reply_markup=None):
 def generate_progress_text(progress_data):
     text = "🇹🇷 Türkçe çeviri ilerlemesi\n\n"
     for name, data in progress_data.items():
-        # items/sec hesapla
         elapsed_sec = max(1, sum(int(x) * t for x, t in zip([3600, 60, 1], map(int, data['elapsed'].split(":")))))
         speed = data['done'] / elapsed_sec if elapsed_sec > 0 else 0
-
         percent = (data['done'] / data['total'] * 100) if data['total'] > 0 else 0
 
-        # %0 veya %100 ise progress bar göstermeyeceğiz
-        if data['total'] == 0 or percent == 0 or percent == 100:
-            progress_line = ""
-        else:
-            progress_line = f"{progress_bar(data['done'], data['total'])}\n"
+        # %0 veya %100 ise progress bar gizlenecek
+        progress_line = "" if data['total'] == 0 or percent == 0 or percent == 100 else f"{progress_bar(data['done'], data['total'])}\n"
 
         text += (
             f"📌 {name}: {data['done']}/{data['total']}\n"
@@ -206,7 +201,6 @@ async def process_collection_parallel(collection, name, message, progress_data):
         eta_str = time.strftime("%H:%M:%S", time.gmtime(eta)) if math.isfinite(eta) else "∞"
         elapsed_str = time.strftime("%H:%M:%S", time.gmtime(elapsed))
 
-        # Güncel CPU/RAM ve batch info
         _, _, cpu_percent, ram_percent = dynamic_config()
 
         progress_data[name] = {
@@ -253,18 +247,20 @@ async def turkce_icerik(client: Client, message: Message):
     global stop_event
     stop_event.clear()
 
+    # Başlangıç progress_data
+    progress_data = {
+        "Filmler": {"done": 0, "total": movie_col.count_documents({}), "errors": 0, "elapsed": "00:00:00", "eta": "∞",
+                    "cpu": 0, "ram": 0, "workers": 0, "batch": 0},
+        "Diziler": {"done": 0, "total": series_col.count_documents({}), "errors": 0, "elapsed": "00:00:00", "eta": "∞",
+                    "cpu": 0, "ram": 0, "workers": 0, "batch": 0}
+    }
+
+    # İlk mesaj gönderiliyor (ilerleme %0 olsa bile)
     start_msg = await message.reply_text(
-        "🇹🇷 Türkçe çeviri hazırlanıyor...\nİlerleme tek mesajda gösterilecektir.",
+        generate_progress_text(progress_data),
         parse_mode=enums.ParseMode.MARKDOWN,
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ İptal Et", callback_data="stop")]])
     )
-
-    progress_data = {
-        "Filmler": {"done": 0, "total": 0, "errors": 0, "elapsed": "00:00:00", "eta": "∞",
-                    "cpu": 0, "ram": 0, "workers": 0, "batch": 0},
-        "Diziler": {"done": 0, "total": 0, "errors": 0, "elapsed": "00:00:00", "eta": "∞",
-                    "cpu": 0, "ram": 0, "workers": 0, "batch": 0}
-    }
 
     movie_total, movie_done, movie_errors, movie_time = await process_collection_parallel(
         movie_col, "Filmler", start_msg, progress_data
@@ -286,8 +282,8 @@ async def turkce_icerik(client: Client, message: Message):
 
     summary = (
         "🎉 Türkçe Çeviri Sonuçları\n\n"
-        f"📌 Filmler: {movie_done}/{movie_total}\n{progress_bar(movie_done, movie_total) if movie_done < movie_total else ''}\nKalan: {movie_total - movie_done}, Hatalar: {movie_errors}\n\n"
-        f"📌 Diziler: {series_done}/{series_total}\n{progress_bar(series_done, series_total) if series_done < series_total else ''}\nKalan: {series_total - series_done}, Hatalar: {series_errors}\n\n"
+        f"📌 Filmler: {movie_done}/{movie_total}\nKalan: {movie_total - movie_done}, Hatalar: {movie_errors}\n\n"
+        f"📌 Diziler: {series_done}/{series_total}\nKalan: {series_total - series_done}, Hatalar: {series_errors}\n\n"
         f"📊 Genel Özet\nToplam içerik : {total_all}\nBaşarılı     : {done_all - errors_all}\nHatalı       : {errors_all}\nKalan        : {remaining_all}\nToplam süre  : {total_time_str}\n"
     )
     try:
