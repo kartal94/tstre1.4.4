@@ -1,4 +1,4 @@
-import asyncio 
+import asyncio
 from pyrogram import Client, filters, enums
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from pymongo import MongoClient
@@ -118,7 +118,7 @@ def translate_batch_worker(batch, stop_flag):
     return results
 
 # ------------ Paralel koleksiyon işleyici ------------
-async def process_collection_parallel(collection, name, message):
+async def process_collection_parallel(collection, name, message, update_interval=5):
     loop = asyncio.get_event_loop()
     total = collection.count_documents({})
     done = 0
@@ -173,7 +173,7 @@ async def process_collection_parallel(collection, name, message):
         ram_percent = psutil.virtual_memory().percent
         sys_info = f"CPU: {cpu}% | RAM: %{ram_percent}"
 
-        if time.time() - last_update > 30 or idx >= len(ids):
+        if time.time() - last_update > update_interval or idx >= len(ids):
             text = (
                 f"{name}: {done}/{total}\n"
                 f"{progress_bar(done, total)}\n\n"
@@ -212,20 +212,29 @@ async def turkce_icerik(client: Client, message: Message):
     global stop_event
     stop_event.clear()
 
-    start_msg = await message.reply_text(
-        "🇹🇷 Türkçe çeviri hazırlanıyor.\nİlerleme tek mesajda gösterilecektir.",
+    # --- Filmler için mesaj ---
+    movie_msg = await message.reply_text(
+        "🇹🇷 Filmler Türkçe çeviri hazırlanıyor...",
         parse_mode=enums.ParseMode.MARKDOWN,
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ İptal Et", callback_data="stop")]])
     )
 
     movie_total, movie_done, movie_errors, movie_time = await process_collection_parallel(
-        movie_col, "Filmler", start_msg
+        movie_col, "Filmler", movie_msg, update_interval=5
+    )
+
+    # --- Diziler için mesaj ---
+    series_msg = await message.reply_text(
+        "🇹🇷 Diziler Türkçe çeviri hazırlanıyor...",
+        parse_mode=enums.ParseMode.MARKDOWN,
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ İptal Et", callback_data="stop")]])
     )
 
     series_total, series_done, series_errors, series_time = await process_collection_parallel(
-        series_col, "Diziler", start_msg
+        series_col, "Diziler", series_msg, update_interval=5
     )
 
+    # --- Genel Özet ---
     total_all = movie_total + series_total
     done_all = movie_done + series_done
     errors_all = movie_errors + series_errors
@@ -243,7 +252,7 @@ async def turkce_icerik(client: Client, message: Message):
         f"📊 Genel Özet\nToplam içerik : {total_all}\nBaşarılı     : {done_all - errors_all}\nHatalı       : {errors_all}\nKalan        : {remaining_all}\nToplam süre  : {eta_str}\n"
     )
     try:
-        await start_msg.edit_text(summary, parse_mode=enums.ParseMode.MARKDOWN)
+        await message.reply_text(summary, parse_mode=enums.ParseMode.MARKDOWN)
     except:
         pass
 
