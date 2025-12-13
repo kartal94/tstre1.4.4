@@ -162,6 +162,7 @@ async def cevir(client: Client, message: Message):
                         c["errors"] += 1
                 idx += len(batch_ids)
 
+                # Ara güncelleme
                 if time.time() - last_update > update_interval or idx >= len(ids) or stop_event.is_set():
                     text = ""
                     for col_summary in collections:
@@ -187,6 +188,37 @@ async def cevir(client: Client, message: Message):
                     last_update = time.time()
     finally:
         pool.shutdown(wait=False)
+
+    # ------------ SONUÇ EKRANI ------------
+    total_all = sum(c["total"] for c in collections)
+    done_all = sum(c["done"] for c in collections)
+    errors_all = sum(c["errors"] for c in collections)
+    remaining_all = total_all - done_all
+    total_time = round(time.time() - start_time)
+    final_time_str = format_time_custom(total_time)
+
+    final_text = "🎉 **Türkçe Çeviri Sonuçları**\n\n"
+    for col_summary in collections:
+        final_text += (
+            f"📌 **{col_summary['name']}**: {col_summary['done']}/{col_summary['total']}\n"
+            f"{progress_bar(col_summary['done'], col_summary['total'])}\n"
+            f"Hatalar: `{col_summary['errors']}`\n\n"
+        )
+
+    final_text += (
+        f"📊 **Genel Özet**\n"
+        f"Toplam içerik: `{total_all}`\n"
+        f"Başarılı    : `{done_all - errors_all}`\n"
+        f"Hatalı      : `{errors_all}`\n"
+        f"Kalan       : `{remaining_all}`\n"
+        f"Toplam süre  : `{final_time_str}`"
+    )
+
+    try:
+        await start_msg.edit_text(final_text, parse_mode=enums.ParseMode.MARKDOWN)
+    except:
+        pass
+
 
 # ---------------- /CEVIREKLE ----------------
 @Client.on_message(filters.command("cevirekle") & filters.private & filters.user(OWNER_ID))
