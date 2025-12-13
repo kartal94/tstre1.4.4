@@ -177,9 +177,17 @@ async def cevir(client: Client, message: Message):
 
                 idx += len(batch_ids)
 
-                # Dizilerde tamamlanan bölümleri DB üzerinden doğru şekilde say
+                # İlerleme sayısını doğru şekilde güncelle
                 if c["name"] == "Diziler":
-                    c["done_episodes"] = col.count_documents({"seasons.episodes.cevrildi": True})
+                    done_eps = 0
+                    for doc in col.aggregate([
+                        {"$unwind": "$seasons"},
+                        {"$unwind": "$seasons.episodes"},
+                        {"$match": {"seasons.episodes.cevrildi": True}},
+                        {"$count": "done"}
+                    ]):
+                        done_eps = doc["done"]
+                    c["done_episodes"] = done_eps
                 else:
                     c["done"] = col.count_documents({"cevrildi": True})
 
