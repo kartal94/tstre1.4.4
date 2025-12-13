@@ -109,7 +109,6 @@ def translate_batch_worker(batch_data):
         results.append((_id, upd))
     return results
 
-# ---------------- /CEVIR ----------------
 @Client.on_message(filters.command("cevir") & filters.private & filters.user(OWNER_ID))
 async def cevir(client: Client, message: Message):
     global stop_event
@@ -126,12 +125,21 @@ async def cevir(client: Client, message: Message):
 
     collections = [
         {"col": movie_col, "name": "Filmler", "total": movie_col.count_documents({}), "done": 0, "errors": 0},
-        {"col": series_col, "name": "Diziler", "total": series_col.count_documents({}), "done": 0, "errors": 0}
+        {"col": series_col, "name": "Diziler", "total": series_col.count_documents({}), "done": 0, "errors": 0, "done_episodes": 0, "total_episodes": 0}
     ]
 
+    # Diziler için toplam bölüm sayısını önceden hesapla
+    for col_summary in collections:
+        if col_summary["name"] == "Diziler":
+            total_eps = 0
+            for doc in col_summary["col"].find({}, {"seasons.episodes": 1}):
+                for season in doc.get("seasons", []):
+                    total_eps += len(season.get("episodes", []))
+            col_summary["total_episodes"] = total_eps
+
     start_time = time.time()
-    last_update = 0
-    update_interval = 15
+    last_update = time.time()
+    update_interval = 15  # Güncelleme sabit 15 saniye
     workers = 4
     pool = ThreadPoolExecutor(max_workers=workers)
     loop = asyncio.get_event_loop()
@@ -140,58 +148,57 @@ async def cevir(client: Client, message: Message):
     try:
         for c in collections:
             col = c["col"]
-            ids = [d["_id"] for d in col.find({}, {"_id":1})]
+            ids = [d["_id"] for d in col.find({}, {"_id": 1})]
             idx = 0
 
             while idx < len(ids):
                 if stop_event.is_set():
                     break
 
-                batch_ids = ids[idx: idx+batch_size]
-                batch_docs = list(col.find({"_id":{"$in": batch_ids}}))
+                batch_ids = ids[idx: idx + batch_size]
+                batch_docs = list(col.find({"_id": {"$in": batch_ids}}))
                 worker_data = {"docs": batch_docs, "stop_flag_set": stop_event.is_set()}
 
                 results = await loop.run_in_executor(pool, translate_batch_worker, worker_data)
 
+                # Veritabanına yaz ve sayımları güncelle
                 for _id, upd in results:
                     try:
                         if upd:
-                            col.update_one({"_id":_id}, {"$set":upd})
-                        c["done"] += 1
+                            col.update_one({"_id": _id}, {"$set": upd})
+                        if c["name"] == "Diziler" and "seasons" in upd:
+                            # Bölüm bazlı sayımı güncelle
+                            done_eps = sum(len([ep for s in upd["seasons"] for ep in s.get("episodes", []) if ep.get("cevrildi", False)]))
+                            c["done_episodes"] += done_eps
+                        else:
+                            c["done"] += 1
                     except:
                         c["errors"] += 1
                 idx += len(batch_ids)
 
-                # Ara güncelleme
-                if time.time() - last_update > update_interval or idx >= len(ids) or stop_event.is_set():
+                # Sabit 15 saniyede bir güncelleme
+                if time.time() - last_update >= update_interval:
                     text = ""
                     for col_summary in collections:
                         if col_summary["name"] == "Diziler":
-                            # Diziler için toplam bölüm sayısı ve tamamlanan bölüm sayısı
-                            total_episodes = 0
-                            done_episodes = 0
-                            for doc in col_summary["col"].find({}, {"seasons.episodes.cevrildi":1}):
-                                for season in doc.get("seasons", []):
-                                    total_episodes += len(season.get("episodes", []))
-                                    done_episodes += sum(1 for ep in season.get("episodes", []) if ep.get("cevrildi", False))
-                            rem = total_episodes - done_episodes
-                            text += f"📌 **{col_summary['name']}**: {done_episodes}/{total_episodes}\n"
-                            text += f"{progress_bar(done_episodes, total_episodes)}\n"
+                            rem = col_summary["total_episodes"] - col_summary["done_episodes"]
+                            text += f"📌 **{col_summary['name']}**: {col_summary['done_episodes']}/{col_summary['total_episodes']}\n"
+                            text += f"{progress_bar(col_summary['done_episodes'], col_summary['total_episodes'])}\n"
                             text += f"Hatalar: `{col_summary['errors']}` | Kalan: {rem}\n\n"
                         else:
-                            # Filmler olduğu gibi
                             rem = col_summary["total"] - col_summary["done"]
                             text += f"📌 **{col_summary['name']}**: {col_summary['done']}/{col_summary['total']}\n"
                             text += f"{progress_bar(col_summary['done'], col_summary['total'])}\n"
                             text += f"Hatalar: `{col_summary['errors']}` | Kalan: {rem}\n\n"
 
                     elapsed = time.time() - start_time
-                    total_done = sum(x["done"] for x in collections)
-                    total_all = sum(x["total"] for x in collections)
+                    total_done = sum(c.get("done", 0) + c.get("done_episodes", 0) for c in collections)
+                    total_all = sum(c.get("total", 0) + c.get("total_episodes", 0) for c in collections)
                     rem_all = total_all - total_done
                     eta_seconds = rem_all / (total_done / elapsed) if total_done > 0 else -1
                     text += f"Süre: `{format_time_custom(elapsed)}` (`{format_time_custom(eta_seconds)}`)\n"
                     text += f"CPU: `{psutil.cpu_percent()}%` | RAM: `{psutil.virtual_memory().percent}%`"
+
                     try:
                         await start_msg.edit_text(
                             text,
@@ -204,19 +211,13 @@ async def cevir(client: Client, message: Message):
     finally:
         pool.shutdown(wait=False)
 
-    # ------------ SONUÇ EKRANI (Bölüm bazlı) ------------
+    # Sonuç mesajı
     final_text = "🎉 **Türkçe Çeviri Sonuçları**\n\n"
     for col_summary in collections:
         if col_summary["name"] == "Diziler":
-            total_episodes = 0
-            done_episodes = 0
-            for doc in col_summary["col"].find({}, {"seasons.episodes.cevrildi":1}):
-                for season in doc.get("seasons", []):
-                    total_episodes += len(season.get("episodes", []))
-                    done_episodes += sum(1 for ep in season.get("episodes", []) if ep.get("cevrildi", False))
             final_text += (
-                f"📌 **{col_summary['name']}**: {done_episodes}/{total_episodes}\n"
-                f"{progress_bar(done_episodes, total_episodes)}\n"
+                f"📌 **{col_summary['name']}**: {col_summary['done_episodes']}/{col_summary['total_episodes']}\n"
+                f"{progress_bar(col_summary['done_episodes'], col_summary['total_episodes'])}\n"
                 f"Hatalar: `{col_summary['errors']}`\n\n"
             )
         else:
@@ -226,8 +227,8 @@ async def cevir(client: Client, message: Message):
                 f"Hatalar: `{col_summary['errors']}`\n\n"
             )
 
-    total_all = sum(c["total"] for c in collections)
-    done_all = sum(c["done"] for c in collections)
+    total_all = sum(c.get("total", 0) + c.get("total_episodes", 0) for c in collections)
+    done_all = sum(c.get("done", 0) + c.get("done_episodes", 0) for c in collections)
     errors_all = sum(c["errors"] for c in collections)
     remaining_all = total_all - done_all
     total_time = round(time.time() - start_time)
@@ -236,10 +237,10 @@ async def cevir(client: Client, message: Message):
     final_text += (
         f"📊 **Genel Özet**\n"
         f"Toplam içerik: `{total_all}`\n"
-        f"Başarılı    : `{done_all - errors_all}`\n"
-        f"Hatalı      : `{errors_all}`\n"
-        f"Kalan       : `{remaining_all}`\n"
-        f"Toplam süre  : `{final_time_str}`"
+        f"Başarılı    : `{done_all - errors_all}`\n"
+        f"Hatalı      : `{errors_all}`\n"
+        f"Kalan       : `{remaining_all}`\n"
+        f"Toplam süre : `{final_time_str}`"
     )
 
     try:
