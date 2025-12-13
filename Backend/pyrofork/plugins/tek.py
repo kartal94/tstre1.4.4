@@ -131,11 +131,11 @@ async def cevir(client: Client, message: Message):
     )
 
     collections = [
-        {"col": movie_col, "name": "Filmler", "total": movie_col.count_documents({}), "done": 0, "errors": 0, "errors_list": []},
-        {"col": series_col, "name": "Diziler", "total": series_col.count_documents({}), "done": 0, "errors": 0, "done_episodes": 0, "total_episodes": 0, "errors_list": []}
+        {"col": movie_col, "name": "Filmler", "total": movie_col.count_documents({}), "done": 0, "errors_list": []},
+        {"col": series_col, "name": "Diziler", "total": series_col.count_documents({}), "done_episodes": 0, "total_episodes": 0, "errors_list": []}
     ]
 
-    # Diziler için toplam bölüm sayısını önceden hesapla
+    # Diziler için toplam bölüm sayısını hesapla
     for c in collections:
         if c["name"] == "Diziler":
             total_eps = 0
@@ -144,13 +144,12 @@ async def cevir(client: Client, message: Message):
                     total_eps += len(season.get("episodes", []))
             c["total_episodes"] = total_eps
 
-    start_time = time.time()
-    last_update = time.time()
-    update_interval = 15
+    batch_size = 50
     workers = 4
     pool = ThreadPoolExecutor(max_workers=workers)
     loop = asyncio.get_event_loop()
-    batch_size = 50
+    last_update = time.time()
+    update_interval = 10  # saniye
 
     try:
         for c in collections:
@@ -180,30 +179,45 @@ async def cevir(client: Client, message: Message):
                         else:
                             c["done"] += 1
                     except:
-                        c["errors"] += 1
+                        c["errors_list"].append(f"ID: {_id} | DB Güncelleme Hatası")
+
                 idx += len(batch_ids)
 
-                # Güncelleme mesajı
-                if time.time() - last_update >= update_interval:
-                    # (Mevcut güncelleme kodu burada aynen kalabilir)
+                # İlerleme mesajını güncelle
+                if time.time() - last_update >= update_interval or idx >= len(ids):
                     last_update = time.time()
+                    progress_lines = []
+                    for coll in collections:
+                        done_count = coll.get("done_episodes", coll.get("done", 0))
+                        total_count = coll.get("total_episodes", coll.get("total", 0))
+                        progress_lines.append(
+                            f"**{coll['name']}**: {done_count}/{total_count}\n"
+                            f"{progress_bar(done_count, total_count)}\n"
+                            f"Hatalar: {len(coll['errors_list'])}\n"
+                        )
+                    progress_text = "🇹🇷 Türkçe çeviri hazırlanıyor...\n\n" + "\n".join(progress_lines)
+                    try:
+                        await start_msg.edit_text(progress_text, parse_mode=enums.ParseMode.MARKDOWN,
+                                                  reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ İptal Et", callback_data="stop")]]))
+                    except:
+                        pass
     finally:
         pool.shutdown(wait=False)
 
     # Sonuç mesajı
     final_text = "🎉 **Türkçe Çeviri Sonuçları**\n\n"
     for c in collections:
-        done_count = c.get("done_episodes", c["done"])
-        total_count = c.get("total_episodes", c["total"])
+        done_count = c.get("done_episodes", c.get("done", 0))
+        total_count = c.get("total_episodes", c.get("total", 0))
         final_text += (
             f"📌 **{c['name']}**: {done_count}/{total_count}\n"
             f"{progress_bar(done_count, total_count)}\n"
-            f"Hatalar: `{c['errors']}`\n\n"
+            f"Hatalar: `{len(c['errors_list'])}`\n\n"
         )
 
     await start_msg.edit_text(final_text, parse_mode=enums.ParseMode.MARKDOWN)
 
-    # ---------------- Hata dosyasını oluştur ve gönder ----------------
+    # Hataları dosya olarak gönder
     hata_icerigi = []
     for c in collections:
         if c["errors_list"]:
@@ -216,7 +230,6 @@ async def cevir(client: Client, message: Message):
         with open(log_path, "w", encoding="utf-8") as f:
             f.write("\n".join(hata_icerigi))
 
-        # Telegram'a gönder
         try:
             await client.send_document(chat_id=OWNER_ID, document=log_path, caption="⛔ Çeviri sırasında hatalar oluştu / kalan içerikler")
         except:
