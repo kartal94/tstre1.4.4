@@ -1,13 +1,11 @@
 import asyncio
 import time
 import os
-import multiprocessing
-from concurrent.futures import ProcessPoolExecutor
+from pymongo import MongoClient, UpdateOne
 from collections import defaultdict
 
 from pyrogram import Client, filters, enums
 from pyrogram.types import Message
-from pymongo import MongoClient, UpdateOne
 from deep_translator import GoogleTranslator
 import psutil
 
@@ -91,7 +89,7 @@ async def cevir(_, message: Message):
 
     await status.edit_text("✅ Çeviri tamamlandı.")
 
-# ================= /TUR (İPTALSİZ) ==================
+# ================= /TUR ==============================
 @Client.on_message(filters.command("tur") & filters.private & CustomFilters.owner)
 async def tur_ve_platform_duzelt(_, message: Message):
     start_msg = await message.reply_text("🔄 Tür ve platform güncellemesi başlatıldı…")
@@ -116,22 +114,28 @@ async def tur_ve_platform_duzelt(_, message: Message):
         "TOD": "Tod"
     }
 
-    total = 0
+    total_updated = 0
+    platform_added_summary = defaultdict(list)
+
     for col in (movie_col, series_col):
         bulk = []
 
         for doc in col.find({}, {"genres": 1, "telegram": 1, "seasons": 1}):
             genres = doc.get("genres", []).copy()
             updated = False
+            added_platforms = []
 
+            # Tür çevirisi
             genres = [genre_map.get(g, g) for g in genres]
 
+            # Platform ekleme
             for t in doc.get("telegram", []):
                 name = t.get("name", "").lower()
                 for k, v in platform_map.items():
                     if k.lower() in name and v not in genres:
                         genres.append(v)
                         updated = True
+                        added_platforms.append(v)
 
             for s in doc.get("seasons", []):
                 for ep in s.get("episodes", []):
@@ -141,15 +145,24 @@ async def tur_ve_platform_duzelt(_, message: Message):
                             if k.lower() in name and v not in genres:
                                 genres.append(v)
                                 updated = True
+                                added_platforms.append(v)
 
             if updated:
                 bulk.append(UpdateOne({"_id": doc["_id"]}, {"$set": {"genres": genres}}))
-                total += 1
+                total_updated += 1
+                if added_platforms:
+                    platform_added_summary[str(doc["_id"])].extend(list(set(added_platforms)))
 
         if bulk:
             col.bulk_write(bulk)
 
-    await start_msg.edit_text(f"✅ Tür ve platform güncellemesi tamamlandı\nToplam: {total}")
+    summary_lines = [f"Toplam güncellenen doküman: {total_updated}"]
+    if platform_added_summary:
+        summary_lines.append("\nPlatform eklenen dokümanlar:")
+        for doc_id, platforms in platform_added_summary.items():
+            summary_lines.append(f"• {doc_id} → {', '.join(platforms)}")
+
+    await start_msg.edit_text("✅ Tür ve platform güncellemesi tamamlandı.\n\n" + "\n".join(summary_lines))
 
 # ================= /ISTATISTIK ======================
 def get_db_urls():
@@ -188,7 +201,7 @@ def get_system_status():
     uptime_sec = int(time.time() - bot_start_time)
     h, rem = divmod(uptime_sec, 3600)
     m, s = divmod(rem, 60)
-    uptime = f"{h}s {m}d {s}s"
+    uptime = f"{h}sa {m}dk {s}sn"
 
     return cpu, ram, free_disk, free_percent, uptime
 
@@ -199,16 +212,16 @@ async def istatistik(_, message: Message):
     cpu, ram, free_disk, free_percent, uptime = get_system_status()
 
     genre_text = "\n".join(
-        f"{g:<12} | Film: {c['film']:<3} | Dizi: {c['dizi']:<3}"
+        f"{g:<14} | Film: {c['film']:<4} | Dizi: {c['dizi']:<4}"
         for g, c in sorted(genre_stats.items())
     )
 
     text = (
         f"⌬ <b>İstatistik</b>\n\n"
-        f"┠ Filmler: {total_movies}\n"
-        f"┠ Diziler: {total_series}\n"
-        f"┖ Depolama: {storage_mb} MB ({storage_percent}%)\n\n"
-        f"<b>Tür Bazlı:</b>\n<pre>{genre_text}</pre>\n\n"
+        f"┠ Filmler : {total_movies}\n"
+        f"┠ Diziler : {total_series}\n"
+        f"┖ Depolama: {storage_mb} MB (%{storage_percent})\n\n"
+        f"<b>Tür Dağılımı</b>\n<pre>{genre_text}</pre>\n\n"
         f"┟ CPU → {cpu}% | Boş → {free_disk}GB [{free_percent}%]\n"
         f"┖ RAM → {ram}% | Süre → {uptime}"
     )
