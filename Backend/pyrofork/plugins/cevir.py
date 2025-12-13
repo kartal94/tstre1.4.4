@@ -1,4 +1,4 @@
-# bot_main.py
+# bot_full.py
 import asyncio
 import time
 from pyrogram import Client, filters, enums
@@ -119,8 +119,11 @@ async def handle_stop(callback_query: CallbackQuery, stop_event: asyncio.Event):
     except:
         pass
 
+# ---------------- Pyrogram Client ----------------
+app = Client("my_bot")
+
 # ---------------- /cevir KOMUTU ----------------
-@Client.on_message(filters.command("cevir") & filters.private & filters.user(OWNER_ID))
+@app.on_message(filters.command("cevir") & filters.private & filters.user(OWNER_ID))
 async def turkce_icerik(client: Client, message: Message):
     global cevir_stop_event
     if cevir_stop_event.is_set():
@@ -191,7 +194,7 @@ async def turkce_icerik(client: Client, message: Message):
         pass
 
 # ---------------- /tur KOMUTU ----------------
-@Client.on_message(filters.command("tur") & filters.private & filters.user(OWNER_ID))
+@app.on_message(filters.command("tur") & filters.private & filters.user(OWNER_ID))
 async def tur_ve_platform_duzelt(client: Client, message: Message):
     global tur_stop_event
     tur_stop_event.clear()
@@ -248,7 +251,7 @@ async def tur_ve_platform_duzelt(client: Client, message: Message):
         pass
 
 # ---------------- /istatistik KOMUTU ----------------
-@Client.on_message(filters.command("istatistik") & filters.private & filters.user(OWNER_ID))
+@app.on_message(filters.command("istatistik") & filters.private & filters.user(OWNER_ID))
 async def send_statistics(client: Client, message: Message):
     try:
         genre_stats = defaultdict(lambda: {"film": 0, "dizi": 0})
@@ -264,15 +267,44 @@ async def send_statistics(client: Client, message: Message):
         ]):
             genre_stats[doc["_id"]]["dizi"] = doc["count"]
 
-        await message.reply_text("✅ İstatistik alındı.", quote=True)
+        cpu = round(cpu_percent(interval=1), 1)
+        ram = round(psutil.virtual_memory().percent, 1)
+        disk = psutil.disk_usage(DOWNLOAD_DIR)
+        free_disk = round(disk.free / (1024 ** 3), 2)
+        free_percent = round((disk.free / disk.total) * 100, 1)
+        uptime_sec = int(time.time() - BOT_START_TIME)
+        h, rem = divmod(uptime_sec, 3600)
+        m, s = divmod(rem, 60)
+        uptime = f"{h}s {m}d {s}s"
+
+        genre_lines = []
+        for genre, counts in sorted(genre_stats.items(), key=lambda x: x[0]):
+            genre_lines.append(f"{genre:<12} | Film: {counts['film']:<3} | Dizi: {counts['dizi']:<3}")
+
+        genre_text = "\n".join(genre_lines)
+
+        text = (
+            f"⌬ <b>İstatistik</b>\n\n"
+            f"┠ Filmler: {movie_col.count_documents({})}\n"
+            f"┠ Diziler: {series_col.count_documents({})}\n\n"
+            f"<b>Tür Bazlı:</b>\n"
+            f"<pre>{genre_text}</pre>\n\n"
+            f"┟ CPU → {cpu}% | Boş → {free_disk}GB [{free_percent}%]\n"
+            f"┖ RAM → {ram}% | Süre → {uptime}"
+        )
+
+        await message.reply_text(text, parse_mode=enums.ParseMode.HTML, quote=True)
     except Exception as e:
         await message.reply_text(f"⚠️ Hata: {e}")
         print("istatistik hata:", e)
 
 # ---------------- CALLBACK HANDLER ----------------
-@Client.on_callback_query()
+@app.on_callback_query()
 async def on_callback(client: Client, query: CallbackQuery):
     if query.data == "stop_cevir":
         await handle_stop(query, cevir_stop_event)
     elif query.data == "stop_tur":
         await handle_stop(query, tur_stop_event)
+
+# ---------------- RUN ----------------
+app.run()
