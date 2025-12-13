@@ -13,7 +13,7 @@ import psutil
 
 from Backend.helper.custom_filter import CustomFilters
 
-# =====================================================
+DOWNLOAD_DIR = "/"
 OWNER_ID = int(os.getenv("OWNER_ID", 12345))
 bot_start_time = time.time()
 stop_event = asyncio.Event()
@@ -35,13 +35,6 @@ movie_col = db["movie"]
 series_col = db["tv"]
 
 # ================= UTILS =============================
-def dynamic_config():
-    cpu = multiprocessing.cpu_count()
-    ram = psutil.virtual_memory().percent
-    workers = max(1, min(cpu, 4))
-    batch = 50 if ram < 50 else 25 if ram < 75 else 10
-    return workers, batch
-
 def translate_safe(text, cache):
     if not text or not text.strip():
         return ""
@@ -62,13 +55,12 @@ async def iptal(_, message: Message):
 
 # ================= /CEVIR ===========================
 @Client.on_message(filters.command("cevir") & filters.private & CustomFilters.owner)
-async def cevir(client: Client, message: Message):
-    if stop_event.is_set():
-        await message.reply_text("⛔ Devam eden işlem yok.")
-        stop_event.clear()
-
+async def cevir(_, message: Message):
     stop_event.clear()
-    status = await message.reply_text("🇹🇷 Çeviri başlatıldı...\nDurdurmak için `/iptal` yazın.")
+    status = await message.reply_text(
+        "🇹🇷 Çeviri başlatıldı...\nDurdurmak için `/iptal` yazın.",
+        parse_mode=enums.ParseMode.MARKDOWN
+    )
 
     for col in (movie_col, series_col):
         docs = list(col.find({"cevrildi": {"$ne": True}}))
@@ -80,6 +72,7 @@ async def cevir(client: Client, message: Message):
                 return
 
             upd = {}
+
             if doc.get("description"):
                 upd["description"] = translate_safe(doc["description"], cache)
 
@@ -100,7 +93,7 @@ async def cevir(client: Client, message: Message):
 
 # ================= /TUR (İPTALSİZ) ==================
 @Client.on_message(filters.command("tur") & filters.private & CustomFilters.owner)
-async def tur_ve_platform_duzelt(client: Client, message: Message):
+async def tur_ve_platform_duzelt(_, message: Message):
     start_msg = await message.reply_text("🔄 Tür ve platform güncellemesi başlatıldı…")
 
     genre_map = {
@@ -159,16 +152,65 @@ async def tur_ve_platform_duzelt(client: Client, message: Message):
     await start_msg.edit_text(f"✅ Tür ve platform güncellemesi tamamlandı\nToplam: {total}")
 
 # ================= /ISTATISTIK ======================
-@Client.on_message(filters.command("istatistik") & filters.private & CustomFilters.owner)
-async def istatistik(_, m: Message):
-    movies = movie_col.count_documents({})
-    series = series_col.count_documents({})
-    uptime = int(time.time() - bot_start_time)
+def get_db_urls():
+    return [u.strip() for u in os.getenv("DATABASE", "").split(",") if u.strip()]
 
-    await m.reply_text(
-        f"📊 **İstatistik**\n\n"
-        f"🎬 Filmler: `{movies}`\n"
-        f"📺 Diziler: `{series}`\n"
-        f"⏱ Çalışma süresi: `{uptime} sn`",
-        parse_mode=enums.ParseMode.MARKDOWN
+def get_db_stats_and_genres(url):
+    client = MongoClient(url)
+    db = client[client.list_database_names()[0]]
+
+    total_movies = db["movie"].count_documents({})
+    total_series = db["tv"].count_documents({})
+
+    stats = db.command("dbstats")
+    storage_mb = round(stats.get("storageSize", 0) / (1024 * 1024), 2)
+    max_storage_mb = 512
+    storage_percent = round((storage_mb / max_storage_mb) * 100, 1)
+
+    genre_stats = defaultdict(lambda: {"film": 0, "dizi": 0})
+
+    for d in db["movie"].aggregate([{"$unwind": "$genres"}, {"$group": {"_id": "$genres", "count": {"$sum": 1}}}]):
+        genre_stats[d["_id"]]["film"] = d["count"]
+
+    for d in db["tv"].aggregate([{"$unwind": "$genres"}, {"$group": {"_id": "$genres", "count": {"$sum": 1}}}]):
+        genre_stats[d["_id"]]["dizi"] = d["count"]
+
+    return total_movies, total_series, storage_mb, storage_percent, genre_stats
+
+def get_system_status():
+    cpu = round(psutil.cpu_percent(interval=1), 1)
+    ram = round(psutil.virtual_memory().percent, 1)
+    disk = psutil.disk_usage(DOWNLOAD_DIR)
+
+    free_disk = round(disk.free / (1024 ** 3), 2)
+    free_percent = round((disk.free / disk.total) * 100, 1)
+
+    uptime_sec = int(time.time() - bot_start_time)
+    h, rem = divmod(uptime_sec, 3600)
+    m, s = divmod(rem, 60)
+    uptime = f"{h}s {m}d {s}s"
+
+    return cpu, ram, free_disk, free_percent, uptime
+
+@Client.on_message(filters.command("istatistik") & filters.private & CustomFilters.owner)
+async def istatistik(_, message: Message):
+    urls = get_db_urls()
+    total_movies, total_series, storage_mb, storage_percent, genre_stats = get_db_stats_and_genres(urls[1])
+    cpu, ram, free_disk, free_percent, uptime = get_system_status()
+
+    genre_text = "\n".join(
+        f"{g:<12} | Film: {c['film']:<3} | Dizi: {c['dizi']:<3}"
+        for g, c in sorted(genre_stats.items())
     )
+
+    text = (
+        f"⌬ <b>İstatistik</b>\n\n"
+        f"┠ Filmler: {total_movies}\n"
+        f"┠ Diziler: {total_series}\n"
+        f"┖ Depolama: {storage_mb} MB ({storage_percent}%)\n\n"
+        f"<b>Tür Bazlı:</b>\n<pre>{genre_text}</pre>\n\n"
+        f"┟ CPU → {cpu}% | Boş → {free_disk}GB [{free_percent}%]\n"
+        f"┖ RAM → {ram}% | Süre → {uptime}"
+    )
+
+    await message.reply_text(text, parse_mode=enums.ParseMode.HTML)
