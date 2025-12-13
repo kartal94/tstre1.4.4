@@ -133,11 +133,11 @@ async def cevir(client: Client, message: Message):
         total_to_translate = 0
         for c in collections:
             col = c["col"]
-            docs_cursor = col.find({"$or":[{"cevrildi":{"$exists":False}},{"cevrildi":False}]})
+            docs_cursor = list(col.find({"$or":[{"cevrildi":{"$exists":False}},{"cevrildi":False}]}))
             if c["name"] == "Diziler":
                 total = sum(len(s.get("episodes", [])) for doc in docs_cursor for s in doc.get("seasons", []))
             else:
-                total = docs_cursor.count()
+                total = len(docs_cursor)
             c["total"] = total
             c["done"] = 0
             total_to_translate += total
@@ -148,26 +148,28 @@ async def cevir(client: Client, message: Message):
         for c in collections:
             col = c["col"]
             name = c["name"]
-            ids_cursor = col.find({"$or":[{"cevrildi":{"$exists":False}},{"cevrildi":False}]}, {"_id":1})
-            ids = [d["_id"] for d in ids_cursor]
+            docs_cursor = list(col.find({"$or":[{"cevrildi":{"$exists":False}},{"cevrildi":False}]}))
             idx = 0
 
-            while idx < len(ids):
+            while idx < len(docs_cursor):
                 if stop_event.is_set(): break
-                batch_ids = ids[idx:idx+batch_size]
-                batch_docs = list(col.find({"_id":{"$in":batch_ids}}))
+                batch_docs = docs_cursor[idx:idx+batch_size]
                 future = asyncio.get_event_loop().run_in_executor(pool, translate_batch_worker, batch_docs)
                 results = await future
                 for _id, upd in results:
                     try:
                         col.update_one({"_id":_id},{"$set":upd})
                         col.update_one({"_id":_id},{"$set":{"cevrildi":True}})
-                        c["done"] += 1
+                        if name == "Diziler":
+                            # Dizilerde bölüm sayısını say
+                            c["done"] += sum(len(s.get("episodes", [])) for s in upd.get("seasons", []))
+                        else:
+                            c["done"] += 1
                     except:
                         pass
-                idx += len(batch_ids)
+                idx += len(batch_docs)
 
-                if time.time() - last_update > 15 or idx>=len(ids):
+                if time.time() - last_update > 15 or idx>=len(docs_cursor):
                     elapsed = time.time() - start_time
                     total_done = sum(x["done"] for x in collections)
                     remaining = total_to_translate - total_done
@@ -210,16 +212,12 @@ async def tur_ve_platform_duzelt(client: Client, message: Message):
         "Gain": "Gain", "HBO": "Max", "Tabii": "Tabii", "AMZN": "Amazon",
     }
 
-    collections = [
-        (movie_col, "Filmler"),
-        (series_col, "Diziler")
-    ]
-
+    collections = [(movie_col, "Filmler"), (series_col, "Diziler")]
     total_fixed = 0
     last_update = 0
 
     for col, name in collections:
-        docs_cursor = col.find({}, {"_id": 1, "genres": 1, "telegram": 1, "seasons": 1})
+        docs_cursor = col.find({}, {"_id":1, "genres":1, "telegram":1, "seasons":1})
         bulk_ops = []
 
         for doc in docs_cursor:
@@ -232,7 +230,7 @@ async def tur_ve_platform_duzelt(client: Client, message: Message):
             genres = new_genres
 
             for t in doc.get("telegram", []):
-                name_field = t.get("name", "").lower()
+                name_field = t.get("name","").lower()
                 for key, genre_name in platform_genre_map.items():
                     if key.lower() in name_field and genre_name not in genres:
                         genres.append(genre_name)
@@ -241,22 +239,21 @@ async def tur_ve_platform_duzelt(client: Client, message: Message):
             for season in doc.get("seasons", []):
                 for ep in season.get("episodes", []):
                     for t in ep.get("telegram", []):
-                        name_field = t.get("name", "").lower()
+                        name_field = t.get("name","").lower()
                         for key, genre_name in platform_genre_map.items():
                             if key.lower() in name_field and genre_name not in genres:
                                 genres.append(genre_name)
                                 updated = True
 
             if updated:
-                bulk_ops.append(UpdateOne({"_id": doc_id}, {"$set": {"genres": genres}}))
+                bulk_ops.append(UpdateOne({"_id":doc_id},{"$set":{"genres":genres}}))
                 total_fixed += 1
 
             if time.time() - last_update > 15:
                 try:
                     await start_msg.edit_text(f"{name}: Güncellenen kayıtlar: {total_fixed}")
                     last_update = time.time()
-                except:
-                    pass
+                except: pass
 
         if bulk_ops: col.bulk_write(bulk_ops)
 
@@ -269,13 +266,20 @@ async def send_statistics(client: Client, message: Message):
         total_movies = movie_col.count_documents({})
         total_series = series_col.count_documents({})
 
-        stats = movie_col.database.command("dbstats")
-        storage_mb = round(stats.get("storageSize", 0)/(1024*1024),2)
+        stats = db.command("dbstats")
+        storage_mb = round(stats.get("storageSize",0)/(1024*1024),2)
 
         genre_stats = defaultdict(lambda: {"film":0,"dizi":0})
-        for doc in movie_col.aggregate([{"$unwind":"$genres"},{"$group":{"_id":"$genres","count":{"$sum":1}}}):
+        for doc in movie_col.aggregate([
+            {"$unwind":"$genres"},
+            {"$group":{"_id":"$genres","count":{"$sum":1}}}
+        ]):
             genre_stats[doc["_id"]]["film"]=doc["count"]
-        for doc in series_col.aggregate([{"$unwind":"$genres"},{"$group":{"_id":"$genres","count":{"$sum":1}}}):
+
+        for doc in series_col.aggregate([
+            {"$unwind":"$genres"},
+            {"$group":{"_id":"$genres","count":{"$sum":1}}}
+        ]):
             genre_stats[doc["_id"]]["dizi"]=doc["count"]
 
         cpu = psutil.cpu_percent(interval=1)
@@ -283,14 +287,15 @@ async def send_statistics(client: Client, message: Message):
         disk = psutil.disk_usage(DOWNLOAD_DIR)
         free_disk = round(disk.free/1024**3,2)
         free_percent = round(disk.free/disk.total*100,1)
-        uptime_sec=int(time.time()-bot_start_time)
+        uptime_sec = int(time.time()-bot_start_time)
         h, rem = divmod(uptime_sec,3600)
         m,s = divmod(rem,60)
         uptime=f"{h}s {m}d {s}s"
 
-        genre_lines = [f"{g:<12} | Film: {c['film']:<3} | Dizi: {c['dizi']:<3}" for g,c in sorted(genre_stats.items())]
+        genre_lines=[f"{g:<12} | Film: {c['film']:<3} | Dizi: {c['dizi']:<3}" for g,c in sorted(genre_stats.items())]
         genre_text="\n".join(genre_lines)
+
         text=f"⌬ <b>İstatistik</b>\n\n┠ Filmler: {total_movies}\n┠ Diziler: {total_series}\n┖ Depolama: {storage_mb} MB\n\n<b>Tür Bazlı:</b>\n<pre>{genre_text}</pre>\n\n┟ CPU → {cpu}% | Boş → {free_disk}GB [{free_percent}%]\n┖ RAM → {ram}% | Süre → {uptime}"
-        await message.reply_text(text,parse_mode=enums.ParseMode.HTML)
+        await message.reply_text(text, parse_mode=enums.ParseMode.HTML)
     except Exception as e:
         await message.reply_text(f"⚠️ Hata: {e}")
