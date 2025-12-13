@@ -127,22 +127,21 @@ async def cevir(client: Client, message: Message):
     start_msg = await message.reply_text(
         "🇹🇷 Türkçe çeviri hazırlanıyor...\nİlerleme tek mesajda gösterilecektir.",
         parse_mode=enums.ParseMode.MARKDOWN,
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ İptal Et", callback_data="stop")]])
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ İptal Et", callback_data="stop")]]),
     )
 
     collections = [
         {"col": movie_col, "name": "Filmler", "total": movie_col.count_documents({}), "done": 0, "errors_list": []},
-        {"col": series_col, "name": "Diziler", "total": series_col.count_documents({}), "done_episodes": 0, "total_episodes": 0, "errors_list": []}
+        {"col": series_col, "name": "Diziler", "total_episodes": 0, "done_episodes": 0, "errors_list": []},
     ]
 
     # Diziler için toplam bölüm sayısını hesapla
-    for c in collections:
-        if c["name"] == "Diziler":
-            total_eps = 0
-            for doc in c["col"].find({}, {"seasons.episodes": 1}):
-                for season in doc.get("seasons", []):
-                    total_eps += len(season.get("episodes", []))
-            c["total_episodes"] = total_eps
+    series_col_data = collections[1]
+    total_eps = 0
+    for doc in series_col.find({}, {"seasons.episodes": 1}):
+        for season in doc.get("seasons", []):
+            total_eps += len(season.get("episodes", []))
+    series_col_data["total_episodes"] = total_eps
 
     batch_size = 50
     workers = 4
@@ -168,20 +167,21 @@ async def cevir(client: Client, message: Message):
                 results, errors = await loop.run_in_executor(pool, translate_batch_worker, worker_data)
                 c["errors_list"].extend(errors)
 
-                # Veritabanına yaz ve sayımları güncelle
+                # Veritabanına yaz
                 for _id, upd in results:
                     try:
                         if upd:
                             col.update_one({"_id": _id}, {"$set": upd})
-                        if c["name"] == "Diziler" and "seasons" in upd:
-                            done_eps = sum(len([ep for s in upd["seasons"] for ep in s.get("episodes", []) if ep.get("cevrildi", False)]))
-                            c["done_episodes"] += done_eps
-                        else:
-                            c["done"] += 1
                     except:
                         c["errors_list"].append(f"ID: {_id} | DB Güncelleme Hatası")
 
                 idx += len(batch_ids)
+
+                # Dizilerde tamamlanan bölümleri DB üzerinden doğru şekilde say
+                if c["name"] == "Diziler":
+                    c["done_episodes"] = col.count_documents({"seasons.episodes.cevrildi": True})
+                else:
+                    c["done"] = col.count_documents({"cevrildi": True})
 
                 # İlerleme mesajını güncelle
                 if time.time() - last_update >= update_interval or idx >= len(ids):
@@ -197,8 +197,11 @@ async def cevir(client: Client, message: Message):
                         )
                     progress_text = "🇹🇷 Türkçe çeviri hazırlanıyor...\n\n" + "\n".join(progress_lines)
                     try:
-                        await start_msg.edit_text(progress_text, parse_mode=enums.ParseMode.MARKDOWN,
-                                                  reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ İptal Et", callback_data="stop")]]))
+                        await start_msg.edit_text(
+                            progress_text,
+                            parse_mode=enums.ParseMode.MARKDOWN,
+                            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ İptal Et", callback_data="stop")]]),
+                        )
                     except:
                         pass
     finally:
