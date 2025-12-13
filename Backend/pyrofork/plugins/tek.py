@@ -331,9 +331,12 @@ def get_system_status():
     disk = psutil.disk_usage(DOWNLOAD_DIR)
     free_disk = round(disk.free/(1024**3),2)
     free_percent = round((disk.free/disk.total)*100,1)
-    uptime_sec = int(time.time()-bot_start_time)
-    h,m,s = divmod(uptime_sec,3600),divmod(uptime_sec%3600,60)
-    uptime=f"{h[0]}sa {m[0]}dk {s[1]}sn"
+    
+    uptime_sec = int(time.time() - bot_start_time)
+    h, rem = divmod(uptime_sec, 3600)   # saat ve kalan saniye
+    m, s = divmod(rem, 60)               # dakika ve saniye
+    uptime = f"{h}sa {m}dk {s}sn"
+
     return cpu, ram, free_disk, free_percent, uptime
 
 @Client.on_message(filters.command("istatistik") & filters.private & filters.user(OWNER_ID))
@@ -354,6 +357,7 @@ async def istatistik(client: Client, message: Message):
     )
 
     await message.reply_text(text, parse_mode=enums.ParseMode.HTML)
+
 
 # ---------------- CALLBACK QUERY ----------------
 @Client.on_callback_query()
