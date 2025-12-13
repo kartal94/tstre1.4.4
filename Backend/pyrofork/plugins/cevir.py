@@ -7,6 +7,7 @@ from pymongo import MongoClient, UpdateOne
 from deep_translator import GoogleTranslator
 import multiprocessing
 import psutil
+from concurrent.futures import ProcessPoolExecutor
 from collections import defaultdict
 import os
 
@@ -14,8 +15,6 @@ import os
 OWNER_ID = int(os.getenv("OWNER_ID", 12345))
 DOWNLOAD_DIR = "/"
 BOT_START_TIME = time.time()
-
-# Stop events ayrı tutuluyor
 cevir_stop_event = asyncio.Event()
 tur_stop_event = asyncio.Event()
 
@@ -72,7 +71,7 @@ def format_time_custom(total_seconds):
     m, s = divmod(rem, 60)
     return f"{h}s{m}d{s:02}s"
 
-# ---------------- CEÇİR HANDLER ----------------
+# ---------------- WORKER ----------------
 def translate_batch_worker(batch_data):
     batch_docs = batch_data["docs"]
     stop_flag_set = batch_data["stop_flag_set"]
@@ -108,6 +107,7 @@ def translate_batch_worker(batch_data):
         results.append((_id, upd))
     return results
 
+# ---------------- CALLBACK ----------------
 async def handle_stop(callback_query: CallbackQuery, stop_event: asyncio.Event):
     stop_event.set()
     try:
@@ -119,7 +119,8 @@ async def handle_stop(callback_query: CallbackQuery, stop_event: asyncio.Event):
     except:
         pass
 
-# /cevir komutu
+# ---------------- /cevir KOMUTU ----------------
+@Client.on_message(filters.command("cevir") & filters.private & filters.user(OWNER_ID))
 async def turkce_icerik(client: Client, message: Message):
     global cevir_stop_event
     if cevir_stop_event.is_set():
@@ -138,7 +139,6 @@ async def turkce_icerik(client: Client, message: Message):
     ]
 
     workers, batch_size = dynamic_config()
-    from concurrent.futures import ProcessPoolExecutor
     pool = ProcessPoolExecutor(max_workers=workers)
     start_time = time.time()
     last_update = 0
@@ -148,7 +148,6 @@ async def turkce_icerik(client: Client, message: Message):
             col = c["col"]
             total = c["total"]
             done = c["done"]
-            errors = c["errors"]
             if total == 0:
                 continue
 
@@ -191,7 +190,8 @@ async def turkce_icerik(client: Client, message: Message):
     except:
         pass
 
-# /tur komutu
+# ---------------- /tur KOMUTU ----------------
+@Client.on_message(filters.command("tur") & filters.private & filters.user(OWNER_ID))
 async def tur_ve_platform_duzelt(client: Client, message: Message):
     global tur_stop_event
     tur_stop_event.clear()
@@ -200,17 +200,12 @@ async def tur_ve_platform_duzelt(client: Client, message: Message):
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ İptal Et", callback_data="stop_tur")]])
     )
 
-    genre_map = {
-        "Action": "Aksiyon", "Sci-Fi": "Bilim Kurgu", "Comedy": "Komedi"
-        # Buraya tüm mappingleri ekle
-    }
-
+    genre_map = {"Action": "Aksiyon", "Sci-Fi": "Bilim Kurgu", "Comedy": "Komedi"}
     platform_genre_map = {"MAX": "Max", "NF": "Netflix", "DSNP": "Disney"}
-
     collections = [(movie_col, "Filmler"), (series_col, "Diziler")]
+
     total_fixed = 0
     last_update = 0
-
     for col, name in collections:
         docs_cursor = col.find({}, {"_id": 1, "genres": 1, "telegram": 1, "seasons": 1})
         bulk_ops = []
@@ -220,14 +215,11 @@ async def tur_ve_platform_duzelt(client: Client, message: Message):
             doc_id = doc["_id"]
             genres = doc.get("genres", [])
             updated = False
-
-            # genre mapping
             new_genres = [genre_map.get(g, g) for g in genres]
             if new_genres != genres:
                 updated = True
             genres = new_genres
 
-            # platform mapping
             for t in doc.get("telegram", []):
                 name_field = t.get("name", "").lower()
                 for key, genre_name in platform_genre_map.items():
@@ -255,65 +247,32 @@ async def tur_ve_platform_duzelt(client: Client, message: Message):
     except:
         pass
 
-# /istatistik komutu
+# ---------------- /istatistik KOMUTU ----------------
+@Client.on_message(filters.command("istatistik") & filters.private & filters.user(OWNER_ID))
 async def send_statistics(client: Client, message: Message):
     try:
-        total_movies = movie_col.count_documents({})
-        total_series = series_col.count_documents({})
-
-        storage_stats = db.command("dbstats")
-        storage_mb = round(storage_stats.get("storageSize", 0) / (1024 * 1024), 2)
-        storage_percent = round((storage_mb / 512) * 100, 1)
-
         genre_stats = defaultdict(lambda: {"film": 0, "dizi": 0})
-        for doc in movie_col.aggregate([{"$unwind": "$genres"}, {"$group": {"_id": "$genres", "count": {"$sum": 1}}}]):
+        for doc in movie_col.aggregate([
+            {"$unwind": "$genres"},
+            {"$group": {"_id": "$genres", "count": {"$sum": 1}}}
+        ]):
             genre_stats[doc["_id"]]["film"] = doc["count"]
-        for doc in series_col.aggregate([{"$unwind": "$genres"}, {"$group": {"_id": "$genres", "count": {"$sum": 1}}}):
+
+        for doc in series_col.aggregate([
+            {"$unwind": "$genres"},
+            {"$group": {"_id": "$genres", "count": {"$sum": 1}}}
+        ]):
             genre_stats[doc["_id"]]["dizi"] = doc["count"]
 
-        cpu = round(psutil.cpu_percent(interval=1), 1)
-        ram = round(psutil.virtual_memory().percent, 1)
-        disk = psutil.disk_usage(DOWNLOAD_DIR)
-        free_disk = round(disk.free / (1024 ** 3), 2)
-        free_percent = round((disk.free / disk.total) * 100, 1)
-        uptime_sec = int(time.time() - BOT_START_TIME)
-        h, rem = divmod(uptime_sec, 3600)
-        m, s = divmod(rem, 60)
-        uptime = f"{h}s {m}d {s}s"
-
-        genre_lines = [f"{genre:<12} | Film: {counts['film']:<3} | Dizi: {counts['dizi']:<3}" 
-                       for genre, counts in sorted(genre_stats.items(), key=lambda x: x[0])]
-        genre_text = "\n".join(genre_lines)
-
-        text = (
-            f"⌬ <b>İstatistik</b>\n\n"
-            f"┠ Filmler: {total_movies}\n"
-            f"┠ Diziler: {total_series}\n"
-            f"┖ Depolama: {storage_mb} MB ({storage_percent}%)\n\n"
-            f"<b>Tür Bazlı:</b>\n<pre>{genre_text}</pre>\n\n"
-            f"┟ CPU → {cpu}% | Boş → {free_disk}GB [{free_percent}%]\n"
-            f"┖ RAM → {ram}% | Süre → {uptime}"
-        )
-        await message.reply_text(text, parse_mode=enums.ParseMode.HTML)
+        await message.reply_text("✅ İstatistik alındı.", quote=True)
     except Exception as e:
         await message.reply_text(f"⚠️ Hata: {e}")
         print("istatistik hata:", e)
 
 # ---------------- CALLBACK HANDLER ----------------
+@Client.on_callback_query()
 async def on_callback(client: Client, query: CallbackQuery):
     if query.data == "stop_cevir":
         await handle_stop(query, cevir_stop_event)
     elif query.data == "stop_tur":
         await handle_stop(query, tur_stop_event)
-
-# ---------------- REGISTER HANDLERS ----------------
-def register_handlers(app: Client):
-    app.add_handler(filters.command("cevir") & filters.private & filters.user(OWNER_ID), turkce_icerik)
-    app.add_handler(filters.command("tur") & filters.private & filters.user(OWNER_ID), tur_ve_platform_duzelt)
-    app.add_handler(filters.command("istatistik") & filters.private & filters.user(OWNER_ID), send_statistics)
-    app.add_handler(filters.callback_query, on_callback)
-
-# ---------------- RUN ----------------
-app = Client("bot")
-register_handlers(app)
-app.run()
