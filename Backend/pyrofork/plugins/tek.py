@@ -80,26 +80,41 @@ def progress_bar(current, total, bar_length=12):
     return f"[{bar}] {percent:.2f}%"
 
 # ----------------- /tur Komutu -----------------
+genre_map = {
+    "Action": "Aksiyon", "Film-Noir": "Kara Film", "Game-Show": "Oyun Gösterisi", "Short": "Kısa",
+    "Sci-Fi": "Bilim Kurgu", "Sport": "Spor", "Adventure": "Macera", "Animation": "Animasyon",
+    "Biography": "Biyografi", "Comedy": "Komedi", "Crime": "Suç", "Documentary": "Belgesel",
+    "Drama": "Dram", "Family": "Aile", "News": "Haberler", "Fantasy": "Fantastik",
+    "History": "Tarih", "Horror": "Korku", "Music": "Müzik", "Musical": "Müzikal",
+    "Mystery": "Gizem", "Romance": "Romantik", "Science Fiction": "Bilim Kurgu",
+    "TV Movie": "TV Filmi", "Thriller": "Gerilim", "War": "Savaş", "Western": "Vahşi Batı",
+    "Action & Adventure": "Aksiyon ve Macera", "Kids": "Çocuklar", "Reality": "Gerçeklik",
+    "Reality-TV": "Gerçeklik", "Sci-Fi & Fantasy": "Bilim Kurgu ve Fantazi", "Soap": "Pembe Dizi",
+    "War & Politics": "Savaş ve Politika", "Bilim-Kurgu": "Bilim Kurgu",
+    "Aksiyon & Macera": "Aksiyon ve Macera", "Savaş & Politik": "Savaş ve Politika",
+    "Bilim Kurgu & Fantazi": "Bilim Kurgu ve Fantazi", "Talk": "Talk-Show"
+}
+
+platform_genre_map = {
+    "MAX": "Max", "Hbomax": "Max", "TABİİ": "Tabii", "NF": "Netflix", "DSNP": "Disney",
+    "Tod": "Tod", "Blutv": "Max", "Tv+": "Tv+", "Exxen": "Exxen",
+    "Gain": "Gain", "HBO": "Max", "Tabii": "Tabii", "AMZN": "Amazon",
+}
+
 @Client.on_message(filters.command("tur") & filters.private & CustomFilters.owner)
 async def tur_ve_platform_duzelt(client: Client, message: Message):
     start_msg = await message.reply_text("🔄 Tür ve platform güncellemesi başlatıldı…")
-    
-    genre_map = { ... }  # Önceki kodunuzdaki genre_map
-    platform_genre_map = { ... }  # Önceki kodunuzdaki platform_genre_map
     collections = [(movie_col, "Filmler"), (series_col, "Diziler")]
-
     total_fixed = 0
     last_update = 0
 
     for col, name in collections:
         docs_cursor = col.find({}, {"_id": 1, "genres": 1, "telegram": 1, "seasons": 1})
         bulk_ops = []
-
         for doc in docs_cursor:
             doc_id = doc["_id"]
             genres = doc.get("genres", [])
             updated = False
-
             new_genres = [genre_map.get(g, g) for g in genres]
             if new_genres != genres:
                 updated = True
