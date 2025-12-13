@@ -112,8 +112,7 @@ async def process_collection_parallel(collection, name, message):
 
     total = len(ids)
     if total == 0:
-        await message.edit_text(f"{name}: Tüm içerikler çevrilmiş ✅")
-        return 0, 0, 0, 0
+        return 0, 0, 0, 0  # içerik yok
 
     done = 0
     errors = 0
@@ -177,6 +176,10 @@ async def turkce_icerik(client: Client, message: Message):
     series_total, series_done, series_errors, series_time = await process_collection_parallel(series_col, "Diziler", start_msg)
 
     total_all = movie_total + series_total
+    if total_all == 0:
+        await start_msg.edit_text("✅ Bütün içerikler çevrilmiş.")
+        return
+
     done_all = movie_done + series_done
     errors_all = movie_errors + series_errors
     remaining_all = total_all - done_all
