@@ -237,10 +237,12 @@ final_text = (
     f"┠ Başarılı: {total_done}\n"
     f"┠ Kalan   : {total_remaining}\n"
     f"┠ Hatalı  : {total_errors}\n"
-    f"┠ Süre    : {format_time_custom(total_duration)}\n"
+    f"┠ Süre    : {format_time_custom(total_duration)}"
 )
 
-# Hataları ekle
+await start_msg.edit_text(final_text, parse_mode=enums.ParseMode.MARKDOWN)
+
+# ---------------- Hataları dosya olarak gönder ----------------
 hata_icerigi = []
 for c in collections:
     if c["errors_list"]:
@@ -249,28 +251,16 @@ for c in collections:
         hata_icerigi.append("")  # Boş satır
 
 if hata_icerigi:
-    final_text += "\n".join(hata_icerigi)
+    log_path = "cevirhatalari.txt"
+    with open(log_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(hata_icerigi))
 
-# Mesajı güncelle
-await start_msg.edit_text(final_text, parse_mode=enums.ParseMode.MARKDOWN)
+    try:
+        await client.send_document(chat_id=OWNER_ID, document=log_path,
+                                   caption="⛔ Çeviri sırasında hatalar oluştu / kalan içerikler")
+    except:
+        pass
 
-    # Hataları dosya olarak gönder
-    hata_icerigi = []
-    for c in collections:
-        if c["errors_list"]:
-            hata_icerigi.append(f"*** {c['name']} Hataları ***")
-            hata_icerigi.extend(c["errors_list"])
-            hata_icerigi.append("\n")
-
-    if hata_icerigi:
-        log_path = "cevirhatalari.txt"
-        with open(log_path, "w", encoding="utf-8") as f:
-            f.write("\n".join(hata_icerigi))
-
-        try:
-            await client.send_document(chat_id=OWNER_ID, document=log_path, caption="⛔ Çeviri sırasında hatalar oluştu / kalan içerikler")
-        except:
-            pass
 # ---------------- /cevirekle ----------------
 @Client.on_message(filters.command("cevirekle") & filters.private & filters.user(OWNER_ID))
 async def cevirekle(client: Client, message: Message):
