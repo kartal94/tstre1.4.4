@@ -35,6 +35,9 @@ translator = GoogleTranslator(source='en', target='tr')
 bot_start_time = time.time()
 DOWNLOAD_DIR = "/"
 
+# ----------------- Küresel Çeviri Kontrol -----------------
+CEVIRME_IPTAL = False
+
 # ----------------- Yardımcı Fonksiyonlar -----------------
 def dynamic_config():
     cpu_count = multiprocessing.cpu_count()
@@ -78,6 +81,13 @@ def progress_bar(current, total, bar_length=12):
     filled_length = int(bar_length * current // total)
     bar = "⬢" * filled_length + "⬡" * (bar_length - filled_length)
     return f"[{bar}] {percent:.2f}%"
+
+# ----------------- /iptal Komutu -----------------
+@Client.on_message(filters.command("iptal") & filters.private & CustomFilters.owner)
+async def cevirme_iptal(client: Client, message: Message):
+    global CEVIRME_IPTAL
+    CEVIRME_IPTAL = True
+    await message.reply_text("⛔ Çeviri işlemi iptal edildi!")
 
 # ----------------- /tur Komutu -----------------
 genre_map = {
@@ -162,8 +172,11 @@ async def tur_ve_platform_duzelt(client: Client, message: Message):
 def translate_batch_worker(batch):
     CACHE = {}
     results = []
+    global CEVIRME_IPTAL
 
     for doc in batch:
+        if CEVIRME_IPTAL:
+            break
         _id = doc.get("_id")
         upd = {}
         is_tv = doc.get("media_type")=="tv"
@@ -202,19 +215,27 @@ def translate_batch_worker(batch):
     return results
 
 async def process_collection_parallel(collection, name, message):
+    global CEVIRME_IPTAL
     loop = asyncio.get_event_loop()
-    total = collection.count_documents({})
+    ids_cursor = collection.find({"cevrildi":{"$ne":True}}, {"_id":1})
+    ids = [d["_id"] for d in ids_cursor]
+
+    total = len(ids)
+    if total==0:
+        await message.edit_text(f"{name}: Çevrilecek içerik yok ✅")
+        return 0,0,0,0
+
     done = 0
     errors = 0
     start_time = time.time()
     last_update = 0
-    ids_cursor = collection.find({}, {"_id":1})
-    ids = [d["_id"] for d in ids_cursor]
     idx = 0
     workers, batch_size = dynamic_config()
     pool = ProcessPoolExecutor(max_workers=workers)
 
     while idx < len(ids):
+        if CEVIRME_IPTAL:
+            break
         batch_ids = ids[idx: idx+batch_size]
         batch_docs = list(collection.find({"_id":{"$in":batch_ids}}))
         if not batch_docs:
@@ -231,45 +252,36 @@ async def process_collection_parallel(collection, name, message):
         for _id, upd in results:
             try:
                 if upd:
-                    collection.update_one({"_id": _id},{"$set": upd})
+                    collection.update_one({"_id":_id},{"$set":upd})
                 done += 1
             except Exception:
                 errors += 1
 
         idx += len(batch_ids)
-        elapsed = time.time() - start_time
-        speed = done / elapsed if elapsed>0 else 0
-        remaining = total - done
-        eta = remaining / speed if speed>0 else float("inf")
-        eta_str = time.strftime("%H:%M:%S", time.gmtime(eta)) if math.isfinite(eta) else "∞"
-        cpu = psutil.cpu_percent(interval=None)
-        ram_percent = psutil.virtual_memory().percent
-        sys_info = f"CPU: {cpu}% | RAM: %{ram_percent}"
 
-        if time.time() - last_update > 30 or idx >= len(ids):
-            text = (
-                f"{name}: {done}/{total}\n"
-                f"{progress_bar(done,total)}\n\n"
-                f"Kalan: {remaining}, Hatalar: {errors}\n"
-                f"Süre: {eta_str}\n"
-                f"{sys_info}"
-            )
+        if time.time()-last_update>5 or idx>=len(ids):
             try:
-                await message.edit_text(text)
+                await message.edit_text(
+                    f"{name}: {done}/{total}\n{progress_bar(done,total)}\nKalan: {total-done}, Hatalar: {errors}\n\n" +
+                    ("⛔ İptal edildi!" if CEVIRME_IPTAL else "")
+                )
             except:
                 pass
             last_update = time.time()
 
     pool.shutdown(wait=False)
-    elapsed_time = round(time.time() - start_time,2)
+    elapsed_time = round(time.time()-start_time,2)
     return total, done, errors, elapsed_time
 
 @Client.on_message(filters.command("cevir") & filters.private & CustomFilters.owner)
 async def turkce_icerik(client: Client, message: Message):
+    global CEVIRME_IPTAL
+    CEVIRME_IPTAL = False
     start_msg = await message.reply_text(
-        "🇹🇷 Türkçe çeviri hazırlanıyor.\nİlerleme tek mesajda gösterilecektir.",
+        "🇹🇷 Türkçe çeviri hazırlanıyor.\nİlerleme tek mesajda gösterilecektir.\n⛔ /iptal ile durdurabilirsiniz",
         parse_mode=enums.ParseMode.MARKDOWN
     )
+
     movie_total, movie_done, movie_errors, movie_time = await process_collection_parallel(movie_col,"Filmler",start_msg)
     series_total, series_done, series_errors, series_time = await process_collection_parallel(series_col,"Diziler",start_msg)
 
@@ -286,10 +298,11 @@ async def turkce_icerik(client: Client, message: Message):
         "🎉 Türkçe Çeviri Sonuçları\n\n"
         f"📌 Filmler: {movie_done}/{movie_total}\n{progress_bar(movie_done,movie_total)}\nKalan: {movie_total-movie_done}, Hatalar: {movie_errors}\n\n"
         f"📌 Diziler: {series_done}/{series_total}\n{progress_bar(series_done,series_total)}\nKalan: {series_total-series_done}, Hatalar: {series_errors}\n\n"
-        f"📊 Genel Özet\nToplam içerik : {total_all}\nBaşarılı     : {done_all-errors_all}\nHatalı       : {errors_all}\nKalan        : {remaining_all}\nToplam süre  : {eta_str}\n"
+        f"📊 Genel Özet\nToplam içerik : {total_all}\nBaşarılı     : {done_all-errors_all}\nHatalı       : {errors_all}\nKalan        : {remaining_all}\nToplam süre  : {eta_str}\n" +
+        ("⛔ İptal edildi!" if CEVIRME_IPTAL else "")
     )
     try:
-        await start_msg.edit_text(summary, parse_mode=enums.ParseMode.MARKDOWN)
+        await start_msg.edit_text(summary,parse_mode=enums.ParseMode.MARKDOWN)
     except:
         pass
 
