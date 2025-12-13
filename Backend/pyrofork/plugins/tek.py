@@ -1,14 +1,12 @@
 import asyncio
 import time
 import os
-from pymongo import MongoClient, UpdateOne
 from collections import defaultdict
-
+from pymongo import MongoClient, UpdateOne
 from pyrogram import Client, filters, enums
 from pyrogram.types import Message
 from deep_translator import GoogleTranslator
 import psutil
-
 from Backend.helper.custom_filter import CustomFilters
 
 DOWNLOAD_DIR = "/"
@@ -89,80 +87,78 @@ async def cevir(_, message: Message):
 
     await status.edit_text("✅ Çeviri tamamlandı.")
 
-# ================= /TUR ==============================
+# ================= /TUR (İPTALSİZ) ===================
 @Client.on_message(filters.command("tur") & filters.private & CustomFilters.owner)
 async def tur_ve_platform_duzelt(_, message: Message):
     start_msg = await message.reply_text("🔄 Tür ve platform güncellemesi başlatıldı…")
-
+    
     genre_map = {
-        "Action": "Aksiyon", "Film-Noir": "Kara Film", "Game-Show": "Oyun Gösterisi",
-        "Short": "Kısa", "Sci-Fi": "Bilim Kurgu", "Sport": "Spor",
-        "Adventure": "Macera", "Animation": "Animasyon",
-        "Biography": "Biyografi", "Comedy": "Komedi", "Crime": "Suç",
-        "Documentary": "Belgesel", "Drama": "Dram", "Family": "Aile",
-        "Fantasy": "Fantastik", "History": "Tarih", "Horror": "Korku",
-        "Music": "Müzik", "Mystery": "Gizem", "Romance": "Romantik",
-        "Thriller": "Gerilim", "War": "Savaş", "Western": "Vahşi Batı",
-        "Action & Adventure": "Aksiyon ve Macera",
-        "Sci-Fi & Fantasy": "Bilim Kurgu ve Fantazi"
+        "Action": "Aksiyon", "Film-Noir": "Kara Film", "Game-Show": "Oyun Gösterisi", "Short": "Kısa",
+        "Sci-Fi": "Bilim Kurgu", "Sport": "Spor", "Adventure": "Macera", "Animation": "Animasyon",
+        "Biography": "Biyografi", "Comedy": "Komedi", "Crime": "Suç", "Documentary": "Belgesel",
+        "Drama": "Dram", "Family": "Aile", "News": "Haberler", "Fantasy": "Fantastik",
+        "History": "Tarih", "Horror": "Korku", "Music": "Müzik", "Musical": "Müzikal",
+        "Mystery": "Gizem", "Romance": "Romantik", "Science Fiction": "Bilim Kurgu",
+        "TV Movie": "TV Filmi", "Thriller": "Gerilim", "War": "Savaş", "Western": "Vahşi Batı",
+        "Action & Adventure": "Aksiyon ve Macera", "Kids": "Çocuklar", "Reality": "Gerçeklik",
+        "Reality-TV": "Gerçeklik", "Sci-Fi & Fantasy": "Bilim Kurgu ve Fantazi", "Soap": "Pembe Dizi",
+        "War & Politics": "Savaş ve Politika", "Bilim-Kurgu": "Bilim Kurgu",
+        "Aksiyon & Macera": "Aksiyon ve Macera", "Savaş & Politik": "Savaş ve Politika",
+        "Bilim Kurgu & Fantazi": "Bilim Kurgu ve Fantazi", "Talk": "Talk-Show"
     }
 
-    platform_map = {
-        "NF": "Netflix", "DSNP": "Disney", "AMZN": "Amazon",
-        "HBOMAX": "Max", "HBO": "Max", "BLUTV": "Max",
-        "EXXEN": "Exxen", "GAIN": "Gain", "TABII": "Tabii",
-        "TOD": "Tod"
+    platform_genre_map = {
+        "MAX": "Max", "Hbomax": "Max", "TABİİ": "Tabii", "NF": "Netflix", "DSNP": "Disney",
+        "Tod": "Tod", "Blutv": "Max", "Tv+": "Tv+", "Exxen": "Exxen",
+        "Gain": "Gain", "HBO": "Max", "Tabii": "Tabii", "AMZN": "Amazon",
     }
 
-    total_updated = 0
-    platform_added_summary = defaultdict(list)
+    collections = [(movie_col, "Filmler"), (series_col, "Diziler")]
 
-    for col in (movie_col, series_col):
-        bulk = []
+    total_fixed = 0
+    for col, name in collections:
+        docs_cursor = col.find({}, {"_id": 1, "genres": 1, "telegram": 1, "seasons": 1})
+        bulk_ops = []
 
-        for doc in col.find({}, {"genres": 1, "telegram": 1, "seasons": 1}):
-            genres = doc.get("genres", []).copy()
+        for doc in docs_cursor:
+            doc_id = doc["_id"]
+            genres = doc.get("genres", [])
             updated = False
-            added_platforms = []
 
             # Tür çevirisi
-            genres = [genre_map.get(g, g) for g in genres]
+            new_genres = [genre_map.get(g, g) for g in genres]
+            if new_genres != genres:
+                updated = True
+            genres = new_genres
 
             # Platform ekleme
             for t in doc.get("telegram", []):
-                name = t.get("name", "").lower()
-                for k, v in platform_map.items():
-                    if k.lower() in name and v not in genres:
-                        genres.append(v)
+                name_field = t.get("name", "").lower()
+                for key, genre_name in platform_genre_map.items():
+                    if key.lower() in name_field and genre_name not in genres:
+                        genres.append(genre_name)
                         updated = True
-                        added_platforms.append(v)
 
-            for s in doc.get("seasons", []):
-                for ep in s.get("episodes", []):
+            # Sezonlardaki telegram kontrolü
+            for season in doc.get("seasons", []):
+                for ep in season.get("episodes", []):
                     for t in ep.get("telegram", []):
-                        name = t.get("name", "").lower()
-                        for k, v in platform_map.items():
-                            if k.lower() in name and v not in genres:
-                                genres.append(v)
+                        name_field = t.get("name", "").lower()
+                        for key, genre_name in platform_genre_map.items():
+                            if key.lower() in name_field and genre_name not in genres:
+                                genres.append(genre_name)
                                 updated = True
-                                added_platforms.append(v)
 
             if updated:
-                bulk.append(UpdateOne({"_id": doc["_id"]}, {"$set": {"genres": genres}}))
-                total_updated += 1
-                if added_platforms:
-                    platform_added_summary[str(doc["_id"])].extend(list(set(added_platforms)))
+                bulk_ops.append(UpdateOne({"_id": doc_id}, {"$set": {"genres": genres}}))
+                total_fixed += 1
 
-        if bulk:
-            col.bulk_write(bulk)
+        if bulk_ops:
+            col.bulk_write(bulk_ops)
 
-    summary_lines = [f"Toplam güncellenen doküman: {total_updated}"]
-    if platform_added_summary:
-        summary_lines.append("\nPlatform eklenen dokümanlar:")
-        for doc_id, platforms in platform_added_summary.items():
-            summary_lines.append(f"• {doc_id} → {', '.join(platforms)}")
-
-    await start_msg.edit_text("✅ Tür ve platform güncellemesi tamamlandı.\n\n" + "\n".join(summary_lines))
+    await start_msg.edit_text(
+        f"✅ Tür ve platform güncellemesi tamamlandı.\nToplam değiştirilen kayıt: {total_fixed}"
+    )
 
 # ================= /ISTATISTIK ======================
 def get_db_urls():
