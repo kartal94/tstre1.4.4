@@ -1,14 +1,13 @@
 import asyncio
 import time
-import os
-import multiprocessing
-from concurrent.futures import ProcessPoolExecutor
-from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from pymongo import MongoClient, UpdateOne
+from collections import defaultdict
+import psutil
 from pyrogram import Client, filters, enums
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from deep_translator import GoogleTranslator
-import psutil
+import os
 
 # ---------------- CONFIG ----------------
 OWNER_ID = int(os.getenv("OWNER_ID", 12345))
@@ -32,13 +31,6 @@ series_col = db["tv"]
 bot_start_time = time.time()
 
 # ---------------- UTILS ----------------
-def dynamic_config():
-    cpu_count = multiprocessing.cpu_count()
-    ram_percent = psutil.virtual_memory().percent
-    workers = max(1, min(cpu_count, 4))
-    batch_size = 50 if ram_percent < 50 else 25 if ram_percent < 75 else 10
-    return workers, batch_size
-
 def translate_text_safe(text, cache):
     if not text or str(text).strip() == "":
         return ""
@@ -78,6 +70,45 @@ async def handle_stop(callback_query: CallbackQuery):
     except:
         pass
 
+# ---------------- TRANSLATE WORKER ----------------
+def translate_batch_worker(batch_data):
+    batch_docs = batch_data["docs"]
+    stop_flag_set = batch_data["stop_flag_set"]
+    if stop_flag_set:
+        return []
+    CACHE = {}
+    results = []
+
+    for doc in batch_docs:
+        if stop_flag_set:
+            break
+        _id = doc.get("_id")
+        upd = {}
+        cevrildi = doc.get("cevrildi", False)
+
+        if cevrildi:
+            continue
+
+        if doc.get("description"):
+            upd["description"] = translate_text_safe(doc["description"], CACHE)
+
+        seasons = doc.get("seasons")
+        if seasons:
+            for s in seasons:
+                for ep in s.get("episodes", []):
+                    if ep.get("cevrildi", False):
+                        continue
+                    if ep.get("title"):
+                        ep["title"] = translate_text_safe(ep["title"], CACHE)
+                    if ep.get("overview"):
+                        ep["overview"] = translate_text_safe(ep["overview"], CACHE)
+                    ep["cevrildi"] = True
+            upd["seasons"] = seasons
+
+        upd["cevrildi"] = True
+        results.append((_id, upd))
+    return results
+
 # ---------------- /CEVIR ----------------
 @Client.on_message(filters.command("cevir") & filters.private & filters.user(OWNER_ID))
 async def cevir(client: Client, message: Message):
@@ -101,46 +132,10 @@ async def cevir(client: Client, message: Message):
     start_time = time.time()
     last_update = 0
     update_interval = 15
-    workers, batch_size = dynamic_config()
-    pool = ProcessPoolExecutor(max_workers=workers)
-
-    def translate_batch_worker(batch_data):
-        batch_docs = batch_data["docs"]
-        stop_flag_set = batch_data["stop_flag_set"]
-        if stop_flag_set:
-            return []
-        CACHE = {}
-        results = []
-
-        for doc in batch_docs:
-            if stop_flag_set:
-                break
-            _id = doc.get("_id")
-            upd = {}
-            cevrildi = doc.get("cevrildi", False)
-
-            if cevrildi:
-                continue
-
-            if doc.get("description"):
-                upd["description"] = translate_text_safe(doc["description"], CACHE)
-
-            seasons = doc.get("seasons")
-            if seasons:
-                for s in seasons:
-                    for ep in s.get("episodes", []):
-                        if ep.get("cevrildi", False):
-                            continue
-                        if ep.get("title"):
-                            ep["title"] = translate_text_safe(ep["title"], CACHE)
-                        if ep.get("overview"):
-                            ep["overview"] = translate_text_safe(ep["overview"], CACHE)
-                        ep["cevrildi"] = True
-                upd["seasons"] = seasons
-
-            upd["cevrildi"] = True
-            results.append((_id, upd))
-        return results
+    workers = 4
+    pool = ThreadPoolExecutor(max_workers=workers)
+    loop = asyncio.get_event_loop()
+    batch_size = 50
 
     try:
         for c in collections:
@@ -155,7 +150,7 @@ async def cevir(client: Client, message: Message):
                 batch_ids = ids[idx: idx+batch_size]
                 batch_docs = list(col.find({"_id":{"$in": batch_ids}}))
                 worker_data = {"docs": batch_docs, "stop_flag_set": stop_event.is_set()}
-                loop = asyncio.get_event_loop()
+
                 results = await loop.run_in_executor(pool, translate_batch_worker, worker_data)
 
                 for _id, upd in results:
@@ -193,24 +188,18 @@ async def cevir(client: Client, message: Message):
     finally:
         pool.shutdown(wait=False)
 
-    # Final ekran
-    final_text = "🎉 **Türkçe Çeviri Sonuçları**\n\n"
-    total_all = sum(c["total"] for c in collections)
-    done_all = sum(c["done"] for c in collections)
-    errors_all = sum(c["errors"] for c in collections)
-    rem_all = total_all - done_all
-    total_time = format_time_custom(time.time() - start_time)
-
-    for c in collections:
-        final_text += f"📌 **{c['name']}**: {c['done']}/{c['total']}\n"
-        final_text += f"{progress_bar(c['done'], c['total'])}\n"
-        final_text += f"Hatalar: `{c['errors']}`\n\n"
-    final_text += f"📊 **Genel Özet**\nToplam içerik: `{total_all}`\nBaşarılı: `{done_all-errors_all}`\nHatalı: `{errors_all}`\nKalan: `{rem_all}`\nToplam süre: `{total_time}`"
-
-    try:
-        await start_msg.edit_text(final_text, parse_mode=enums.ParseMode.MARKDOWN)
-    except:
-        pass
+# ---------------- /CEVIREKLE ----------------
+@Client.on_message(filters.command("cevirekle") & filters.private & filters.user(OWNER_ID))
+async def cevirekle(client: Client, message: Message):
+    status = await message.reply_text("🔄 'cevrildi' alanları ekleniyor...")
+    total_updated = 0
+    for col in (movie_col, series_col):
+        docs_cursor = col.find({"cevrildi":{"$ne":True}}, {"_id":1})
+        bulk_ops = [UpdateOne({"_id":doc["_id"]},{"$set":{"cevrildi":True}}) for doc in docs_cursor]
+        if bulk_ops:
+            res = col.bulk_write(bulk_ops)
+            total_updated += res.modified_count
+    await status.edit_text(f"✅ 'cevrildi' alanları eklendi.\nToplam güncellenen kayıt: {total_updated}")
 
 # ---------------- /CEVIRKALDIR ----------------
 @Client.on_message(filters.command("cevirkaldir") & filters.private & filters.user(OWNER_ID))
@@ -224,19 +213,6 @@ async def cevirkaldir(client: Client, message: Message):
             res = col.bulk_write(bulk_ops)
             total_updated += res.modified_count
     await status.edit_text(f"✅ 'cevrildi' alanları kaldırıldı.\nToplam güncellenen kayıt: {total_updated}")
-
-# ---------------- /CEVIREKLE ----------------
-@Client.on_message(filters.command("cevirekle") & filters.private & filters.user(OWNER_ID))
-async def cevirekle(client: Client, message: Message):
-    status = await message.reply_text("🔄 'cevrildi' alanları ekleniyor...")
-    total_updated = 0
-    for col in (movie_col, series_col):
-        docs_cursor = col.find({"cevrildi":{"$ne":True}}, {"_id":1})
-        bulk_ops = [UpdateOne({"_id":doc["_id"]},{"$set":{"cevrildi":True}}) for doc in docs_cursor]
-        if bulk_ops:
-            res = col.bulk_write(bulk_ops)
-            total_updated += res.modified_count
-    await status.edit_text(f"✅ 'cevrildi' alanları eklendi.\nToplam güncellenen kayıt: {total_updated}")
 
 # ---------------- /TUR ----------------
 @Client.on_message(filters.command("tur") & filters.private & filters.user(OWNER_ID))
