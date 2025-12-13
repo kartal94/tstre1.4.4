@@ -13,7 +13,6 @@ from deep_translator import GoogleTranslator
 import psutil
 
 # ------------ ÖZEL FİLTRE İÇE AKTARIMI ------------
-# Botunuzun özel filtre yapısını kullanır.
 try:
     from Backend.helper.custom_filter import CustomFilters 
 except ImportError:
@@ -36,7 +35,7 @@ TRANSLATED_STATUS_VALUE = "cevrildi"
 # GLOBAL STOP EVENT
 stop_event = asyncio.Event()
 
-# ------------ DATABASE Bağlantısı (InvalidURI Hata Giderme) ------------
+# ------------ DATABASE Bağlantısı ------------
 db_raw = os.getenv("DATABASE", "")
 if not db_raw:
     raise Exception("DATABASE ortam değişkeni bulunamadı!")
@@ -86,7 +85,6 @@ def translate_text_safe(text, cache):
     try:
         tr = GoogleTranslator(source='en', target='tr').translate(text)
     except Exception:
-        # Çeviri API hatası durumunda orijinal metni döndür
         tr = text
     cache[text] = tr
     return tr
@@ -111,21 +109,41 @@ def format_time_custom(total_seconds):
     
     return f"{int(hours)}s{int(minutes)}d{int(seconds):02}s"
 
-# ------------ Worker: batch çevirici (Güçlendirilmiş Hata Yönetimi) ------------
+# ------------ Hata Loglama Fonksiyonu (Telegram'a Gönderim) ------------
+async def log_error_to_telegram(client: Client, media_type: str, item_id, error_message: str):
+    """Hata detaylarını Telegram'a log mesajı olarak gönderir."""
+    
+    # OWNER_ID'yi veya hata log kanalını hedefleyin
+    log_chat_id = OWNER_ID # Kendi Telegram ID'niz
+    
+    message = (
+        f"🚨 **KRİTİK ÇEVİRİ İŞLEME HATASI**\n\n"
+        f"**Tip**: `{media_type.upper()}`\n"
+        f"**ID**: `{item_id}`\n"
+        f"**Hata**: `{error_message[:400]}`\n\n"
+        f"Bu içerik çevrilemedi ve atlandı. Lütfen MongoDB'deki döküman yapısını kontrol edin."
+    )
+    
+    try:
+        await client.send_message(log_chat_id, message, parse_mode=enums.ParseMode.MARKDOWN)
+    except Exception as e:
+        print(f"Telegram'a log gönderme hatası: {e}")
+
+# ------------ Worker: batch çevirici (Hata Kaydı Eklendi) ------------
 def translate_batch_worker(batch_data):
     """
     Çoklu süreçte çalıştırılacak işçi fonksiyonu.
-    Her döküman için ayrı hata yakalama bloğu eklenmiştir.
+    Hata durumunda döküman ID'sini ve hata mesajını döndürür.
     """
     batch_docs = batch_data["docs"]
     stop_flag_set = batch_data["stop_flag_set"]
     
     if stop_flag_set:
-        return {"results": [], "error_ids": []}
+        return {"results": [], "error_details": []}
 
     CACHE = {}
     results = []
-    error_ids = []
+    error_details = []
 
     for doc in batch_docs:
         if stop_flag_set:
@@ -134,8 +152,8 @@ def translate_batch_worker(batch_data):
         _id = doc.get("_id")
         upd = {}
         needs_update = False
+        media_type = doc.get('media_type', 'movie')
         
-        # Döküman bazında hata yönetimi
         try:
             # 1. Film Çevirisi VEYA Dizi Ana Açıklaması
             if doc.get(TRANSLATED_STATUS_FIELD) != TRANSLATED_STATUS_VALUE:
@@ -146,22 +164,17 @@ def translate_batch_worker(batch_data):
             
             # 2. Sezon/Bölüm Çevirisi (Diziler için)
             seasons = doc.get("seasons")
-            is_tv_show = doc.get("media_type") == "tv"
             
-            if seasons and is_tv_show and isinstance(seasons, list):
+            if media_type == 'tv' and seasons and isinstance(seasons, list):
                 modified = False
-                # Sezon döngüsü
                 for season in seasons:
                     eps = season.get("episodes", []) or []
-                    # Bölüm döngüsü
                     for ep in eps:
                         if stop_flag_set:
                             break
                         
-                        # Sadece çevrilmemişse işle
                         if ep.get(TRANSLATED_STATUS_FIELD) != TRANSLATED_STATUS_VALUE:
                             
-                            # Başlık ve Özet çevirisi
                             if "title" in ep and ep["title"]:
                                 ep["title"] = translate_text_safe(ep["title"], CACHE)
                                 modified = True
@@ -173,7 +186,6 @@ def translate_batch_worker(batch_data):
                                 ep[TRANSLATED_STATUS_FIELD] = TRANSLATED_STATUS_VALUE
                                 
                 if modified:
-                    # Sezonlar listesi tamamen güncellendi
                     upd["seasons"] = seasons
                     needs_update = True
 
@@ -184,18 +196,20 @@ def translate_batch_worker(batch_data):
                 results.append((_id, upd))
             
         except Exception as e:
-            # İşleme hatası durumunda (örneğin döküman yapısı beklenenden farklıysa)
-            print(f"[{doc.get('media_type', 'unknown')}] {_id} dökümanında işleme hatası: {e}")
-            error_ids.append(_id)
+            # İşleme hatası durumunda döküman ID'si ve hata mesajı kaydedilir
+            error_details.append({
+                "media_type": media_type,
+                "id": _id,
+                "error": str(e)
+            })
             continue
 
-    return {"results": results, "error_ids": error_ids}
+    return {"results": results, "error_details": error_details}
 
 # ------------ Yardımcı Fonksiyon: Çevrilecek Sayıyı Hesapla ------------
 async def get_translation_count():
     movie_count = movie_col.count_documents({TRANSLATED_STATUS_FIELD: {"$ne": TRANSLATED_STATUS_VALUE}})
     
-    # Diziler için, en az bir çevrilmemiş bölümü olan ana belgeleri bul
     series_count = series_col.aggregate([
         {"$unwind": "$seasons"},
         {"$unwind": "$seasons.episodes"},
@@ -208,7 +222,7 @@ async def get_translation_count():
 
     return movie_count, series_to_translate_count
 
-# ------------ Yardımcı Fonksiyon: Toplu Durum Güncelleme (WriteError Giderildi) ------------
+# ------------ Yardımcı Fonksiyon: Toplu Durum Güncelleme ------------
 async def bulk_status_update(collection, action):
     """Koleksiyon tipine göre (movie/tv) farklı güncelleme komutları kullanır."""
     
@@ -352,9 +366,9 @@ async def start_translation(client: Client, message: Message):
                 batch_ids = ids[idx: idx + batch_size]
                 batch_docs = list(col.find({"_id": {"$in": batch_ids}})) 
                 
-                # Çekilen döküman kontrolü (0/1 hatası için kritik)
                 if not batch_docs and batch_ids:
                     print(f"UYARI: {name} koleksiyonundan {len(batch_ids)} ID çekildi ancak dökümanlar bulunamadı. Atlanıyor.")
+                    # Bu ID'leri hata olarak saymak yerine atlıyoruz, çünkü döküman DB'den silinmiş olabilir.
                     idx += len(batch_ids)
                     continue
 
@@ -368,11 +382,24 @@ async def start_translation(client: Client, message: Message):
                     future = loop.run_in_executor(pool, translate_batch_worker, worker_data)
                     worker_output = await future
                     results = worker_output["results"]
-                    # Worker'da işlenemeyen (hata veren) dökümanları hata sayacına ekle
-                    c["errors"] += len(worker_output["error_ids"])
+                    
+                    # Worker'dan gelen hata detaylarını işleme
+                    if worker_output["error_details"]:
+                        c["errors"] += len(worker_output["error_details"])
+                        for error_detail in worker_output["error_details"]:
+                            # Hata mesajını Telegram'a gönder
+                            await log_error_to_telegram(
+                                client, 
+                                error_detail["media_type"], 
+                                error_detail["id"], 
+                                error_detail["error"]
+                            )
+
                 except Exception as e:
                     print(f"Worker Görev Başlatma/Tamamlama Hatası ({name}): {e}")
                     c["errors"] += len(batch_docs)
+                    # Buradaki hata, döküman yapısından ziyade multiprocessing hatasıdır.
+                    await log_error_to_telegram(client, name, "BATCH_ERROR", str(e)) 
                     idx += len(batch_ids)
                     await asyncio.sleep(1)
                     continue
@@ -387,8 +414,9 @@ async def start_translation(client: Client, message: Message):
                         update_requests.append(
                             pymongo.UpdateOne({"_id": _id}, {"$set": upd})
                         )
-                    # Başarıyla işlendi (güncelleme olsa da olmasa da)
-                    c["done"] += 1 
+                    # Hata kaydı olanlar hariç, işlenen her dökümanı başarılı say
+                    if _id not in [d['id'] for d in worker_output["error_details"]]:
+                        c["done"] += 1 
 
                 if update_requests:
                     try:
@@ -396,7 +424,8 @@ async def start_translation(client: Client, message: Message):
                     except Exception as e:
                         print(f"Toplu DB Yazma Hatası: {e}")
                         c["errors"] += len(update_requests)
-                        c["done"] -= len(update_requests) 
+                        c["done"] -= len(update_requests)
+                        await log_error_to_telegram(client, name, "BULK_WRITE_ERROR", str(e))
 
                 idx += len(batch_ids)
                 
@@ -409,7 +438,7 @@ async def start_translation(client: Client, message: Message):
                     remaining_all = total_all - total_done
 
                     for c_item in collections:
-                        remaining_current = max(0, c_item['total'] - c_item['done'])
+                        remaining_current = max(0, c_item['total'] - c_item['done'] - c_item['errors']) # Kalan hesabı düzeltildi
                         text += (
                             f"📌 **{c_item['name']}**: {c_item['done']}/{c_item['total']}\n"
                             f"{progress_bar(c_item['done'], c_item['total'])}\n"
@@ -453,7 +482,7 @@ async def start_translation(client: Client, message: Message):
     total_all = sum(c["total"] for c in collections)
     done_all = sum(c["done"] for c in collections)
     errors_all = sum(c["errors"] for c in collections)
-    remaining_all = total_all - done_all
+    remaining_all = total_all - done_all - errors_all # Kalan hesabı düzeltildi
 
     total_time = round(time.time() - start_time)
     final_time_str = format_time_custom(total_time)
